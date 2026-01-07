@@ -32,16 +32,21 @@ export default function NewDocument() {
 
     try {
       // Extract text from PDF in the browser
+      console.log("[Generate Title] Extracting text from PDF...");
       const extractedText = await extractTextFromPDFClient(file);
+      console.log("[Generate Title] Extracted text length:", extractedText?.length || 0);
       
       if (!extractedText || extractedText.trim().length === 0) {
+        console.log("[Generate Title] Error: No text extracted");
         throw new Error("Could not extract text from PDF");
       }
 
       // Truncate on client side to avoid request payload limits (server truncates to 5K anyway)
       const truncatedText = extractedText.slice(0, 5000);
+      console.log("[Generate Title] Truncated to:", truncatedText.length, "chars");
 
       // Send extracted text to API for title generation
+      console.log("[Generate Title] Sending request to API...");
       const res = await fetch("/api/generate-title", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -73,16 +78,21 @@ export default function NewDocument() {
 
     try {
       // Extract text from PDF in the browser
+      console.log("[Summarize] Extracting text from PDF...");
       const extractedText = await extractTextFromPDFClient(file);
+      console.log("[Summarize] Extracted text length:", extractedText?.length || 0);
       
       if (!extractedText || extractedText.trim().length === 0) {
+        console.log("[Summarize] Error: No text extracted");
         throw new Error("Could not extract text from PDF");
       }
 
       // Truncate on client side to avoid request payload limits (server truncates to 10K anyway)
       const truncatedText = extractedText.slice(0, 10000);
+      console.log("[Summarize] Truncated to:", truncatedText.length, "chars");
 
       // Send extracted text to API for summarization
+      console.log("[Summarize] Sending request to API...");
       const res = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
