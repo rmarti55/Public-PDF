@@ -1,3 +1,5 @@
+import type { TextItem } from "pdfjs-dist/types/src/display/api";
+
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
     // Dynamic import to avoid issues with Next.js bundling
@@ -20,7 +22,8 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
       const pageText = textContent.items
-        .map((item: { str?: string }) => item.str || "")
+        .filter((item): item is TextItem => 'str' in item)
+        .map((item) => item.str)
         .join(" ");
       textParts.push(pageText);
     }
