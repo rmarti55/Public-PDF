@@ -1,4 +1,4 @@
-export const OPENROUTER_MODEL = "openai/gpt-5.2";
+export const OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 async function callOpenRouter(
