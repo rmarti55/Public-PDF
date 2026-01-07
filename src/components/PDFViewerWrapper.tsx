@@ -17,8 +17,22 @@ const PDFViewer = dynamic(() => import("./PDFViewer"), {
 interface PDFViewerWrapperProps {
   url: string;
   title: string;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
 }
 
-export default function PDFViewerWrapper({ url, title }: PDFViewerWrapperProps) {
-  return <PDFViewer url={url} title={title} />;
+export default function PDFViewerWrapper({
+  url,
+  title,
+  currentPage,
+  onPageChange,
+}: PDFViewerWrapperProps) {
+  return (
+    <PDFViewer
+      url={url}
+      title={title}
+      currentPage={currentPage}
+      onPageChange={onPageChange}
+    />
+  );
 }

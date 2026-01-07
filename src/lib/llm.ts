@@ -93,7 +93,9 @@ ${documentContext}
 </document>
 
 Please answer questions based on this document. If the question cannot be answered from the document, 
-say so clearly. Be concise and accurate in your responses.`;
+say so clearly. Be concise and accurate in your responses.
+
+When referencing specific pages in the document, use the format [page X] (e.g., [page 5]) so users can click to navigate directly to that page.`;
 
   const messages = [
     ...chatHistory,

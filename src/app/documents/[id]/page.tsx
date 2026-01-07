@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import PDFViewerWrapper from "@/components/PDFViewerWrapper";
 import ContextSidebar from "@/components/ContextSidebar";
-import ChatPanel from "@/components/ChatPanel";
+import DocumentContent from "@/components/DocumentContent";
+import MobileChatButton from "@/components/MobileChatButton";
 
 interface DocumentPageProps {
   params: Promise<{ id: string }>;
@@ -82,49 +82,19 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
           />
         </aside>
 
-        {/* PDF Viewer */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Mobile Title */}
-          <div className="lg:hidden p-4 bg-white border-b border-gray-200">
-            <h1 className="text-xl font-bold text-gray-900">{document.title}</h1>
-            {document.category && (
-              <span className="inline-block mt-2 px-3 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
-                {document.category}
-              </span>
-            )}
-          </div>
-
-          <div className="flex-1 p-4 overflow-hidden">
-            <PDFViewerWrapper url={document.filePath} title={document.title} />
-          </div>
-        </div>
-
-        {/* Right Sidebar - Chat */}
-        <aside className="w-96 h-full flex-shrink-0 border-l border-gray-200 bg-white overflow-hidden hidden xl:block">
-          <ChatPanel documentId={document.id} documentTitle={document.title} />
-        </aside>
+        {/* PDF Viewer and Chat - shared state */}
+        <DocumentContent
+          documentId={document.id}
+          documentTitle={document.title}
+          filePath={document.filePath}
+          category={document.category}
+        />
       </main>
 
       {/* Mobile Chat Toggle */}
-      <MobileChatToggle documentId={document.id} documentTitle={document.title} />
+      <div className="xl:hidden fixed bottom-4 right-4 z-50">
+        <MobileChatButton documentId={document.id} documentTitle={document.title} />
+      </div>
     </div>
   );
 }
-
-// Client component for mobile chat
-function MobileChatToggle({
-  documentId,
-  documentTitle,
-}: {
-  documentId: string;
-  documentTitle: string;
-}) {
-  return (
-    <div className="xl:hidden fixed bottom-4 right-4 z-50">
-      <MobileChatButton documentId={documentId} documentTitle={documentTitle} />
-    </div>
-  );
-}
-
-// We need to make the mobile chat button a client component
-import MobileChatButton from "@/components/MobileChatButton";

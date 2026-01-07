@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -14,14 +14,31 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface PDFViewerProps {
   url: string;
   title: string;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
 }
 
-export default function PDFViewer({ url, title }: PDFViewerProps) {
+export default function PDFViewer({
+  url,
+  title,
+  currentPage,
+  onPageChange,
+}: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [pageNumber, setPageNumber] = useState(1);
+  const [internalPageNumber, setInternalPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Use controlled page if provided, otherwise use internal state
+  const pageNumber = currentPage ?? internalPageNumber;
+
+  // Sync internal state when controlled page changes
+  useEffect(() => {
+    if (currentPage !== undefined && currentPage !== internalPageNumber) {
+      setInternalPageNumber(currentPage);
+    }
+  }, [currentPage, internalPageNumber]);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -34,12 +51,18 @@ export default function PDFViewer({ url, title }: PDFViewerProps) {
     setLoading(false);
   }
 
+  const setPage = (page: number) => {
+    const clampedPage = Math.max(1, Math.min(page, numPages || 1));
+    setInternalPageNumber(clampedPage);
+    onPageChange?.(clampedPage);
+  };
+
   const goToPrevPage = () => {
-    setPageNumber((prev) => Math.max(prev - 1, 1));
+    setPage(pageNumber - 1);
   };
 
   const goToNextPage = () => {
-    setPageNumber((prev) => Math.min(prev + 1, numPages || 1));
+    setPage(pageNumber + 1);
   };
 
   const zoomIn = () => {

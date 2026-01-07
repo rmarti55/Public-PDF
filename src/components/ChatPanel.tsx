@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, ReactNode } from "react";
 
 interface ChatPanelProps {
   documentId: string;
   documentTitle: string;
+  onGoToPage?: (page: number) => void;
 }
 
 interface Message {
@@ -15,7 +16,14 @@ interface Message {
   responseTime?: number;
 }
 
-export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps) {
+// Regex to match [page X] pattern (case insensitive)
+const PAGE_LINK_REGEX = /\[page\s+(\d+)\]/gi;
+
+export default function ChatPanel({
+  documentId,
+  documentTitle,
+  onGoToPage,
+}: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState(true);
   const [inputValue, setInputValue] = useState("");
@@ -148,6 +156,47 @@ export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps)
     "Summarize the main findings",
   ];
 
+  // Parse message content and render page links as clickable
+  const renderMessageContent = (content: string, isUserMessage: boolean): ReactNode => {
+    if (!onGoToPage || isUserMessage) {
+      return content;
+    }
+
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    // Reset regex state
+    PAGE_LINK_REGEX.lastIndex = 0;
+
+    while ((match = PAGE_LINK_REGEX.exec(content)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index));
+      }
+
+      const pageNumber = parseInt(match[1], 10);
+      parts.push(
+        <button
+          key={`page-${match.index}`}
+          onClick={() => onGoToPage(pageNumber)}
+          className="text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
+        >
+          {match[0]}
+        </button>
+      );
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : content;
+  };
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
@@ -254,7 +303,9 @@ export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps)
                     : "bg-gray-100 text-gray-900"
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                <p className="text-sm whitespace-pre-wrap">
+                  {renderMessageContent(message.content, message.role === "user")}
+                </p>
                 {message.role === "assistant" && (message.model || message.responseTime) && (
                   <div className="mt-2 pt-2 border-t border-gray-200 flex items-center gap-2 text-xs text-gray-500">
                     {message.model && (
