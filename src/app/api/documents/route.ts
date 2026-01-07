@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db";
 import { extractTextFromPDF } from "@/lib/pdf";
 import { put } from "@vercel/blob";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 // GET all documents (public only gets published, admin gets all)
 export async function GET(request: NextRequest) {
   const isAdmin = request.headers.get("x-admin-auth") === "true";
