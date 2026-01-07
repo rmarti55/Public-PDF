@@ -125,26 +125,57 @@ export default function NewDocument() {
     console.log("[Upload] File:", file.name, `(${(file.size / 1024 / 1024).toFixed(2)} MB)`);
 
     try {
-      // Step 1: Upload file directly to Vercel Blob (bypasses serverless function limit)
-      setUploadStatus("Uploading file to storage...");
-      console.log("[Upload] Step 1: Direct upload to Vercel Blob...");
+      let blobUrl: string;
       
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload",
-        multipart: true, // Enable multipart for large files
-        onUploadProgress: ({ percentage }) => {
-          setUploadProgress(Math.round(percentage));
-          console.log("[Upload] Progress:", Math.round(percentage) + "%");
-        },
-      });
-      
-      console.log("[Upload] Blob uploaded:", blob.url);
+      // Try client-side direct upload first (works for large files in production)
+      // Falls back to server upload for local dev or if token not configured
+      try {
+        setUploadStatus("Uploading file to storage...");
+        console.log("[Upload] Trying direct upload to Vercel Blob...");
+        
+        const blob = await upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/upload",
+          multipart: true,
+          onUploadProgress: ({ percentage }) => {
+            setUploadProgress(Math.round(percentage));
+          },
+        });
+        
+        blobUrl = blob.url;
+        console.log("[Upload] Direct upload success:", blobUrl);
+      } catch (uploadError) {
+        // Fallback: Upload via server (works locally, but has 4.5MB limit on Vercel)
+        console.log("[Upload] Direct upload failed, falling back to server upload...");
+        console.log("[Upload] Error was:", uploadError);
+        
+        if (file.size > 4 * 1024 * 1024) {
+          throw new Error("File too large for server upload. Configure BLOB_READ_WRITE_TOKEN for large files.");
+        }
+        
+        setUploadStatus("Uploading via server...");
+        const formDataUpload = new FormData();
+        formDataUpload.append("file", file);
+        
+        const uploadRes = await fetch("/api/upload-server", {
+          method: "POST",
+          body: formDataUpload,
+        });
+        
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json();
+          throw new Error(err.error || "Server upload failed");
+        }
+        
+        const { url } = await uploadRes.json();
+        blobUrl = url;
+        console.log("[Upload] Server upload success:", blobUrl);
+      }
 
-      // Step 2: Extract text from PDF in the browser
+      // Extract text from PDF in the browser
       setUploadStatus("Extracting text from PDF...");
       setUploadProgress(0);
-      console.log("[Upload] Step 2: Extracting text client-side...");
+      console.log("[Upload] Extracting text client-side...");
       
       let extractedText = "";
       try {
@@ -152,16 +183,14 @@ export default function NewDocument() {
         console.log("[Upload] Extracted text length:", extractedText.length);
       } catch (extractError) {
         console.warn("[Upload] Text extraction failed:", extractError);
-        // Continue without extracted text
       }
 
-      // Truncate for storage (500K chars max for LLM context)
+      // Truncate for storage (500K chars max)
       const truncatedText = extractedText.slice(0, 500000);
-      console.log("[Upload] Truncated text for storage:", truncatedText.length, "chars");
 
-      // Step 3: Send metadata to API (small payload, no file)
+      // Send metadata to API
       setUploadStatus("Saving document...");
-      console.log("[Upload] Step 3: Sending metadata to API...");
+      console.log("[Upload] Sending metadata to API...");
       
       const res = await fetch("/api/documents", {
         method: "POST",
@@ -173,19 +202,17 @@ export default function NewDocument() {
           context: formData.context,
           published: formData.published,
           fileName: file.name,
-          filePath: blob.url,
+          filePath: blobUrl,
           extractedText: truncatedText,
         }),
       });
-
-      console.log("[Upload] API response status:", res.status);
 
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || "Failed to save document");
       }
 
-      console.log("[Upload] Success! Redirecting...");
+      console.log("[Upload] Success!");
       router.push("/admin");
     } catch (err) {
       console.error("[Upload] Error:", err);

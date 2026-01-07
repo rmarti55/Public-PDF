@@ -127,23 +127,51 @@ export default function EditDocument({
       let newFileName = currentFileName;
       let newExtractedText: string | undefined;
 
-      // If a new file is selected, upload it directly to Vercel Blob
+      // If a new file is selected, upload it
       if (file) {
         console.log("[Edit] Uploading new file:", file.name, `(${(file.size / 1024 / 1024).toFixed(2)} MB)`);
         
-        setUploadStatus("Uploading file...");
-        const blob = await upload(file.name, file, {
-          access: "public",
-          handleUploadUrl: "/api/upload",
-          multipart: true,
-          onUploadProgress: ({ percentage }) => {
-            setUploadProgress(Math.round(percentage));
-          },
-        });
+        // Try direct upload first, fall back to server upload
+        try {
+          setUploadStatus("Uploading file...");
+          const blob = await upload(file.name, file, {
+            access: "public",
+            handleUploadUrl: "/api/upload",
+            multipart: true,
+            onUploadProgress: ({ percentage }) => {
+              setUploadProgress(Math.round(percentage));
+            },
+          });
+          newFilePath = blob.url;
+          console.log("[Edit] Direct upload success:", blob.url);
+        } catch (uploadError) {
+          console.log("[Edit] Direct upload failed, trying server upload...");
+          
+          if (file.size > 4 * 1024 * 1024) {
+            throw new Error("File too large. Configure BLOB_READ_WRITE_TOKEN for large files.");
+          }
+          
+          setUploadStatus("Uploading via server...");
+          const formDataUpload = new FormData();
+          formDataUpload.append("file", file);
+          
+          const uploadRes = await fetch("/api/upload-server", {
+            method: "POST",
+            body: formDataUpload,
+          });
+          
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json();
+            throw new Error(err.error || "Upload failed");
+          }
+          
+          const { url } = await uploadRes.json();
+          newFilePath = url;
+          console.log("[Edit] Server upload success:", url);
+        }
         
-        newFilePath = blob.url;
         newFileName = file.name;
-        console.log("[Edit] File uploaded:", blob.url);
+        console.log("[Edit] File uploaded:", newFilePath);
 
         // Extract text from new PDF
         setUploadStatus("Extracting text...");
