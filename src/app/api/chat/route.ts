@@ -46,18 +46,20 @@ export async function POST(request: NextRequest) {
 
     const result = await chat(documentContext, message, chatHistory);
 
-    // Create a transform stream to collect the response and save it
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-    const encoder = new TextEncoder();
-    let fullResponse = "";
+    // Tee the stream - one for response, one for capturing content to save
+    const [responseStream, captureStream] = result.stream.tee();
 
-    // Process the stream in the background
+    // Capture full response in background for DB save
     (async () => {
       try {
-        for await (const chunk of result.textStream) {
-          fullResponse += chunk;
-          await writer.write(encoder.encode(chunk));
+        const reader = captureStream.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = "";
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          fullResponse += decoder.decode(value, { stream: true });
         }
         
         // Save the assistant response to database after stream completes
@@ -71,13 +73,11 @@ export async function POST(request: NextRequest) {
           });
         }
       } catch (error) {
-        console.error("Error processing stream:", error);
-      } finally {
-        await writer.close();
+        console.error("Error capturing stream:", error);
       }
     })();
 
-    return new Response(readable, {
+    return new Response(responseStream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Transfer-Encoding": "chunked",

@@ -101,7 +101,9 @@ say so clearly. Be concise and accurate in your responses.`;
   ];
 
   const stream = await streamOpenRouter(systemPrompt, messages);
+
   return {
+    stream,
     toTextStreamResponse: () =>
       new Response(stream, {
         headers: { "Content-Type": "text/plain; charset=utf-8" },
