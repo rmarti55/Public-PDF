@@ -23,14 +23,24 @@ export default function AdminDashboard() {
   }, []);
 
   const fetchDocuments = async () => {
+    console.log("[Admin] Fetching documents...");
     try {
       const res = await fetch("/api/documents", {
         headers: { "x-admin-auth": "true" },
       });
+      console.log("[Admin] Response status:", res.status);
+      
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("[Admin] Error response:", text);
+        throw new Error(`Failed to fetch: ${res.status} - ${text}`);
+      }
+      
       const data = await res.json();
+      console.log("[Admin] Fetched", data.length, "documents");
       setDocuments(data);
     } catch (error) {
-      console.error("Error fetching documents:", error);
+      console.error("[Admin] Error fetching documents:", error);
     } finally {
       setLoading(false);
     }

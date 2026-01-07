@@ -129,6 +129,20 @@ export default function NewDocument() {
     setLoading(true);
     setError("");
 
+    console.log("[Upload] Starting upload...");
+    console.log("[Upload] File name:", file.name);
+    console.log("[Upload] File size:", file.size, "bytes", `(${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+    console.log("[Upload] File type:", file.type);
+    console.log("[Upload] Form data - title:", formData.title);
+    console.log("[Upload] Form data - description length:", formData.description?.length || 0);
+    console.log("[Upload] Form data - category:", formData.category);
+    console.log("[Upload] Form data - context length:", formData.context?.length || 0);
+
+    // Warn if file is large (Vercel limit is 4.5MB for serverless functions)
+    if (file.size > 4 * 1024 * 1024) {
+      console.warn("[Upload] WARNING: File size exceeds 4MB, may hit Vercel limits!");
+    }
+
     try {
       const data = new FormData();
       data.append("file", file);
@@ -138,13 +152,18 @@ export default function NewDocument() {
       data.append("context", formData.context);
       data.append("published", formData.published.toString());
 
+      console.log("[Upload] Sending POST to /api/documents...");
       const res = await fetch("/api/documents", {
         method: "POST",
         body: data,
       });
 
+      console.log("[Upload] Response status:", res.status);
+      console.log("[Upload] Response ok:", res.ok);
+
       if (!res.ok) {
         const text = await res.text();
+        console.log("[Upload] Error response text:", text);
         let errorMessage = "Failed to upload document";
         try {
           const errorData = JSON.parse(text);
@@ -153,11 +172,14 @@ export default function NewDocument() {
           // Server returned non-JSON (like "Request Entity Too Large")
           errorMessage = text || `Upload failed with status ${res.status}`;
         }
+        console.error("[Upload] Error:", errorMessage);
         throw new Error(errorMessage);
       }
 
+      console.log("[Upload] Success! Redirecting to /admin...");
       router.push("/admin");
     } catch (err) {
+      console.error("[Upload] Caught error:", err);
       setError(err instanceof Error ? err.message : "Failed to upload document");
     } finally {
       setLoading(false);
