@@ -11,6 +11,8 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  model?: string;
+  responseTime?: number;
 }
 
 export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps) {
@@ -71,6 +73,8 @@ export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps)
     setError(null);
 
     try {
+      const startTime = performance.now();
+      
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -94,13 +98,14 @@ export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps)
         throw new Error(errorData.error || "Failed to get response");
       }
 
+      const modelName = response.headers.get("X-Model-Name") || undefined;
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No response body");
 
       const assistantMessageId = (Date.now() + 1).toString();
       setMessages((prev) => [
         ...prev,
-        { id: assistantMessageId, role: "assistant", content: "" },
+        { id: assistantMessageId, role: "assistant", content: "", model: modelName },
       ]);
 
       const decoder = new TextDecoder();
@@ -120,6 +125,16 @@ export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps)
           );
         }
       }
+
+      // Calculate response time after stream completes
+      const responseTime = Math.round(performance.now() - startTime);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMessageId
+            ? { ...m, responseTime }
+            : m
+        )
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
@@ -240,6 +255,26 @@ export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps)
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                {message.role === "assistant" && (message.model || message.responseTime) && (
+                  <div className="mt-2 pt-2 border-t border-gray-200 flex items-center gap-2 text-xs text-gray-500">
+                    {message.model && (
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        {message.model.split("/").pop()?.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                      </span>
+                    )}
+                    {message.responseTime && (
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {(message.responseTime / 1000).toFixed(1)}s
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}

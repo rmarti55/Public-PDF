@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { chat } from "@/lib/llm";
+import { chat, OPENROUTER_MODEL } from "@/lib/llm";
 
 export async function POST(request: NextRequest) {
   try {
@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Transfer-Encoding": "chunked",
+        "X-Model-Name": OPENROUTER_MODEL,
       },
     });
   } catch (error) {
