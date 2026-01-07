@@ -10,17 +10,29 @@ datasource db {
 }
 
 model Document {
-  id            String   @id @default(cuid())
+  id            String        @id @default(cuid())
   title         String
   description   String?
   category      String?
   fileName      String
   filePath      String
-  extractedText String   @db.Text // For LLM context
-  context       String?  @db.Text // Rich HTML context/background
-  published     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  extractedText String        @db.Text // For LLM context
+  context       String?       @db.Text // Rich HTML context/background
+  published     Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  messages      ChatMessage[]
+}
+
+model ChatMessage {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  role       String   // "user" or "assistant"
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
 }
 
 model AdminUser {

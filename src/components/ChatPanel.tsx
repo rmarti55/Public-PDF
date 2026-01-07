@@ -19,11 +19,36 @@ export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps)
   const [inputValue, setInputValue] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
+
+  // Load existing messages on mount
+  useEffect(() => {
+    async function loadMessages() {
+      try {
+        const response = await fetch(`/api/documents/${documentId}/messages`);
+        if (response.ok) {
+          const data = await response.json();
+          setMessages(
+            data.messages.map((m: { id: string; role: string; content: string }) => ({
+              id: m.id,
+              role: m.role as "user" | "assistant",
+              content: m.content,
+            }))
+          );
+        }
+      } catch (err) {
+        console.error("Failed to load chat history:", err);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    }
+    loadMessages();
+  }, [documentId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -147,7 +172,23 @@ export default function ChatPanel({ documentId, documentTitle }: ChatPanelProps)
             </div>
           )}
 
-          {messages.length === 0 && hasApiKey && (
+          {isLoadingHistory && (
+            <div className="flex justify-center py-8">
+              <div className="flex space-x-2">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                <div
+                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                ></div>
+              </div>
+            </div>
+          )}
+
+          {!isLoadingHistory && messages.length === 0 && hasApiKey && (
             <div className="text-center py-8">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg
