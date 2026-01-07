@@ -16,7 +16,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         console.log('[/api/upload] Generating token for:', pathname);
         
         return {
-          allowedContentTypes: ['application/pdf'],
+          allowedContentTypes: ['application/pdf', 'image/png'],
           addRandomSuffix: true,
           maximumSizeInBytes: 500 * 1024 * 1024, // 500MB max
         };

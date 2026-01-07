@@ -1,12 +1,23 @@
 "use client";
 
-import { pdfjs } from "react-pdf";
+let pdfjs: typeof import("react-pdf").pdfjs | null = null;
 
-// Set up the worker
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString();
+async function getPdfjs() {
+  if (typeof window === "undefined") {
+    throw new Error("PDF thumbnail generation is only available in the browser");
+  }
+  
+  if (!pdfjs) {
+    const reactPdf = await import("react-pdf");
+    pdfjs = reactPdf.pdfjs;
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      "pdfjs-dist/build/pdf.worker.min.mjs",
+      import.meta.url
+    ).toString();
+  }
+  
+  return pdfjs;
+}
 
 const THUMBNAIL_WIDTH = 400;
 const THUMBNAIL_HEIGHT = 520;
@@ -17,9 +28,11 @@ const THUMBNAIL_HEIGHT = 520;
  * @returns A Blob containing the PNG thumbnail image
  */
 export async function generateThumbnailFromPDF(file: File): Promise<Blob> {
+  const pdfLib = await getPdfjs();
+  
   // Load the PDF document
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await pdfLib.getDocument({ data: arrayBuffer }).promise;
 
   // Get the first page
   const page = await pdf.getPage(1);
@@ -75,6 +88,8 @@ export async function generateThumbnailFromPDF(file: File): Promise<Blob> {
  * @returns A Blob containing the PNG thumbnail image
  */
 export async function generateThumbnailFromURL(pdfUrl: string): Promise<Blob> {
+  const pdfLib = await getPdfjs();
+  
   // Fetch the PDF file
   const response = await fetch(pdfUrl);
   if (!response.ok) {
@@ -82,7 +97,7 @@ export async function generateThumbnailFromURL(pdfUrl: string): Promise<Blob> {
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await pdfLib.getDocument({ data: arrayBuffer }).promise;
 
   // Get the first page
   const page = await pdf.getPage(1);
