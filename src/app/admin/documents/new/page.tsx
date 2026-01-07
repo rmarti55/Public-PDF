@@ -145,13 +145,10 @@ export default function NewDocument() {
         blobUrl = blob.url;
         console.log("[Upload] Direct upload success:", blobUrl);
       } catch (uploadError) {
-        // Fallback: Upload via server (works locally, but has 4.5MB limit on Vercel)
+        // Fallback: Upload via server (works locally without size limit)
+        // On Vercel production, this will fail for files > 4.5MB
         console.log("[Upload] Direct upload failed, falling back to server upload...");
         console.log("[Upload] Error was:", uploadError);
-        
-        if (file.size > 4 * 1024 * 1024) {
-          throw new Error("File too large for server upload. Configure BLOB_READ_WRITE_TOKEN for large files.");
-        }
         
         setUploadStatus("Uploading via server...");
         const formDataUpload = new FormData();
@@ -163,8 +160,18 @@ export default function NewDocument() {
         });
         
         if (!uploadRes.ok) {
-          const err = await uploadRes.json();
-          throw new Error(err.error || "Server upload failed");
+          const text = await uploadRes.text();
+          console.error("[Upload] Server upload failed:", text);
+          // Check if it's a payload size error
+          if (text.includes("Too Large") || text.includes("PAYLOAD")) {
+            throw new Error("File too large. Add BLOB_READ_WRITE_TOKEN to environment for large file uploads.");
+          }
+          try {
+            const err = JSON.parse(text);
+            throw new Error(err.error || "Server upload failed");
+          } catch {
+            throw new Error(text || "Server upload failed");
+          }
         }
         
         const { url } = await uploadRes.json();

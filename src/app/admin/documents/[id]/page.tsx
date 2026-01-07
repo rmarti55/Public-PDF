@@ -147,10 +147,6 @@ export default function EditDocument({
         } catch (uploadError) {
           console.log("[Edit] Direct upload failed, trying server upload...");
           
-          if (file.size > 4 * 1024 * 1024) {
-            throw new Error("File too large. Configure BLOB_READ_WRITE_TOKEN for large files.");
-          }
-          
           setUploadStatus("Uploading via server...");
           const formDataUpload = new FormData();
           formDataUpload.append("file", file);
@@ -161,8 +157,16 @@ export default function EditDocument({
           });
           
           if (!uploadRes.ok) {
-            const err = await uploadRes.json();
-            throw new Error(err.error || "Upload failed");
+            const text = await uploadRes.text();
+            if (text.includes("Too Large") || text.includes("PAYLOAD")) {
+              throw new Error("File too large. Add BLOB_READ_WRITE_TOKEN for large files.");
+            }
+            try {
+              const err = JSON.parse(text);
+              throw new Error(err.error || "Upload failed");
+            } catch {
+              throw new Error(text || "Upload failed");
+            }
           }
           
           const { url } = await uploadRes.json();
