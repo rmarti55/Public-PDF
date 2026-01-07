@@ -38,11 +38,14 @@ export default function NewDocument() {
         throw new Error("Could not extract text from PDF");
       }
 
+      // Truncate on client side to avoid request payload limits (server truncates to 5K anyway)
+      const truncatedText = extractedText.slice(0, 5000);
+
       // Send extracted text to API for title generation
       const res = await fetch("/api/generate-title", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: extractedText }),
+        body: JSON.stringify({ text: truncatedText }),
       });
 
       if (!res.ok) {
@@ -76,11 +79,14 @@ export default function NewDocument() {
         throw new Error("Could not extract text from PDF");
       }
 
+      // Truncate on client side to avoid request payload limits (server truncates to 10K anyway)
+      const truncatedText = extractedText.slice(0, 10000);
+
       // Send extracted text to API for summarization
       const res = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: extractedText }),
+        body: JSON.stringify({ text: truncatedText }),
       });
 
       if (!res.ok) {
