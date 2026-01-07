@@ -1,5 +1,5 @@
 import Link from "next/link";
-import DocumentCard from "@/components/DocumentCard";
+import DocumentList from "@/components/DocumentList";
 import { prisma } from "@/lib/db";
 
 // Force dynamic rendering to always show fresh data from database
@@ -10,6 +10,7 @@ interface Document {
   title: string;
   description: string | null;
   category: string | null;
+  thumbnailUrl: string | null;
   createdAt: Date;
 }
 
@@ -22,6 +23,7 @@ async function getDocuments(): Promise<Document[]> {
       title: true,
       description: true,
       category: true,
+      thumbnailUrl: true,
       createdAt: true,
     },
   });
@@ -115,18 +117,12 @@ export default async function Home() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {documents.map((doc) => (
-              <DocumentCard
-                key={doc.id}
-                id={doc.id}
-                title={doc.title}
-                description={doc.description}
-                category={doc.category}
-                createdAt={doc.createdAt.toISOString()}
-              />
-            ))}
-          </div>
+          <DocumentList
+            documents={documents.map((doc) => ({
+              ...doc,
+              createdAt: doc.createdAt.toISOString(),
+            }))}
+          />
         )}
       </main>
 

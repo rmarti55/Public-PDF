@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
       category: true,
       fileName: true,
       filePath: true,
+      thumbnailUrl: true,
       published: true,
       createdAt: true,
       updatedAt: true,
@@ -50,11 +51,13 @@ export async function POST(request: NextRequest) {
       fileName,
       filePath,
       extractedText,
+      thumbnailUrl,
     } = body;
 
     console.log("[POST /api/documents] Title:", title);
     console.log("[POST /api/documents] File:", fileName);
     console.log("[POST /api/documents] Blob URL:", filePath);
+    console.log("[POST /api/documents] Thumbnail URL:", thumbnailUrl || "(none)");
     console.log("[POST /api/documents] Extracted text length:", extractedText?.length || 0);
 
     if (!title) {
@@ -76,6 +79,7 @@ export async function POST(request: NextRequest) {
         category: category || null,
         fileName: fileName || "document.pdf",
         filePath,
+        thumbnailUrl: thumbnailUrl || null,
         extractedText: extractedText || "",
         context: context || null,
         published: published || false,

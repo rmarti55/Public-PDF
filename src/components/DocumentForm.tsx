@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
 import { extractTextFromPDFClient } from "@/lib/pdf-client";
+import { generateThumbnailFromPDF } from "@/lib/pdf-thumbnail";
 import { upload } from "@vercel/blob/client";
 
 export interface DocumentFormData {
@@ -216,6 +217,7 @@ export default function DocumentForm({
       let filePath = initialData?.filePath || "";
       let fileName = initialData?.fileName || "";
       let extractedText: string | undefined;
+      let thumbnailUrl: string | undefined;
 
       // Upload file if provided
       if (file) {
@@ -230,6 +232,28 @@ export default function DocumentForm({
           extractedText = text.slice(0, 500000); // Truncate for storage
         } catch (extractError) {
           console.warn("[Upload] Text extraction failed:", extractError);
+        }
+
+        // Generate thumbnail from first page
+        setUploadStatus("Generating thumbnail...");
+        try {
+          const thumbnailBlob = await generateThumbnailFromPDF(file);
+          const thumbnailFile = new File(
+            [thumbnailBlob],
+            `${file.name.replace(".pdf", "")}-thumbnail.png`,
+            { type: "image/png" }
+          );
+          
+          // Upload thumbnail to Vercel Blob
+          setUploadStatus("Uploading thumbnail...");
+          const thumbnailBlobResult = await upload(thumbnailFile.name, thumbnailFile, {
+            access: "public",
+            handleUploadUrl: "/api/upload",
+          });
+          thumbnailUrl = thumbnailBlobResult.url;
+        } catch (thumbnailError) {
+          console.warn("[Upload] Thumbnail generation failed:", thumbnailError);
+          // Continue without thumbnail - not critical
         }
       }
 
@@ -249,6 +273,7 @@ export default function DocumentForm({
             fileName,
             filePath,
             extractedText,
+            thumbnailUrl,
           }),
         });
 
@@ -271,6 +296,7 @@ export default function DocumentForm({
               fileName,
               filePath,
               extractedText,
+              thumbnailUrl,
             }),
           }),
         });

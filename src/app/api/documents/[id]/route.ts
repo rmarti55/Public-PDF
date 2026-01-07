@@ -47,11 +47,13 @@ export async function PUT(
       fileName,
       filePath,
       extractedText,
+      thumbnailUrl,
     } = body;
 
     console.log("[PUT /api/documents] Updating document:", id);
     console.log("[PUT /api/documents] Title:", title);
     console.log("[PUT /api/documents] New file:", fileName || "(none)");
+    console.log("[PUT /api/documents] Thumbnail URL:", thumbnailUrl || "(none)");
 
     const existingDoc = await prisma.document.findUnique({
       where: { id },
@@ -82,12 +84,40 @@ export async function PUT(
         console.log("[PUT /api/documents] Could not delete old file (may not exist)");
       }
 
+      // Delete old thumbnail if it exists
+      if (existingDoc.thumbnailUrl) {
+        try {
+          await del(existingDoc.thumbnailUrl);
+          console.log("[PUT /api/documents] Old thumbnail deleted");
+        } catch {
+          console.log("[PUT /api/documents] Could not delete old thumbnail (may not exist)");
+        }
+      }
+
       updateData.fileName = fileName || existingDoc.fileName;
       updateData.filePath = filePath;
       
       if (extractedText !== undefined) {
         updateData.extractedText = extractedText;
       }
+      
+      if (thumbnailUrl !== undefined) {
+        updateData.thumbnailUrl = thumbnailUrl;
+      }
+    }
+
+    // Allow updating thumbnail separately (for regeneration)
+    if (thumbnailUrl && !filePath) {
+      // Delete old thumbnail if it exists
+      if (existingDoc.thumbnailUrl) {
+        try {
+          await del(existingDoc.thumbnailUrl);
+          console.log("[PUT /api/documents] Old thumbnail deleted for regeneration");
+        } catch {
+          console.log("[PUT /api/documents] Could not delete old thumbnail");
+        }
+      }
+      updateData.thumbnailUrl = thumbnailUrl;
     }
 
     const document = await prisma.document.update({
@@ -130,6 +160,15 @@ export async function DELETE(
       await del(document.filePath);
     } catch {
       // Ignore if file doesn't exist
+    }
+
+    // Delete thumbnail from Vercel Blob
+    if (document.thumbnailUrl) {
+      try {
+        await del(document.thumbnailUrl);
+      } catch {
+        // Ignore if thumbnail doesn't exist
+      }
     }
 
     // Delete from database

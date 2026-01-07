@@ -16,6 +16,7 @@ model Document {
   category      String?
   fileName      String
   filePath      String
+  thumbnailUrl  String?       // Thumbnail image from first page of PDF
   extractedText String        @db.Text // For LLM context
   context       String?       @db.Text // Rich HTML context/background
   published     Boolean       @default(false)

@@ -95,6 +95,82 @@ body {
   color: #1d4ed8;
 }
 
+/* Chat prose styles - optimized for readability in chat bubbles */
+.chat-prose {
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
+.chat-prose > * + * {
+  margin-top: 0.5em;
+}
+
+.chat-prose strong {
+  font-weight: 600;
+}
+
+.chat-prose em {
+  font-style: italic;
+}
+
+.chat-prose ul,
+.chat-prose ol {
+  padding-left: 1.25em;
+}
+
+.chat-prose li {
+  margin-top: 0.25em;
+}
+
+.chat-prose li::marker {
+  color: #6b7280;
+}
+
+.chat-prose code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-family: ui-monospace, monospace;
+}
+
+.chat-prose pre {
+  background: #f3f4f6;
+  padding: 0.75em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.chat-prose pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.chat-prose blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 0.75em;
+  font-style: italic;
+  color: #4b5563;
+}
+
+.chat-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8em;
+}
+
+.chat-prose th,
+.chat-prose td {
+  border: 1px solid #e5e7eb;
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+
+.chat-prose th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
 /* Scrollbar styles */
 ::-webkit-scrollbar {
   width: 8px;
