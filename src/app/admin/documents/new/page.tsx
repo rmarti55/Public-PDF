@@ -10,6 +10,7 @@ export default function NewDocument() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [generatingTitle, setGeneratingTitle] = useState(false);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     title: "",
@@ -19,6 +20,44 @@ export default function NewDocument() {
     published: false,
   });
   const [file, setFile] = useState<File | null>(null);
+
+  const handleAIGenerateTitle = async () => {
+    if (!file) {
+      setError("Please select a PDF file first");
+      return;
+    }
+
+    setGeneratingTitle(true);
+    setError("");
+
+    try {
+      // Extract text from PDF in the browser
+      const extractedText = await extractTextFromPDFClient(file);
+      
+      if (!extractedText || extractedText.trim().length === 0) {
+        throw new Error("Could not extract text from PDF");
+      }
+
+      // Send extracted text to API for title generation
+      const res = await fetch("/api/generate-title", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: extractedText }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to generate title");
+      }
+
+      const { title } = await res.json();
+      setFormData((prev) => ({ ...prev, title }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate title");
+    } finally {
+      setGeneratingTitle(false);
+    }
+  };
 
   const handleAISummarize = async () => {
     if (!file) {
@@ -123,9 +162,29 @@ export default function NewDocument() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Title *
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Title *
+              </label>
+              <button
+                type="button"
+                onClick={handleAIGenerateTitle}
+                disabled={generatingTitle || !file}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {generatingTitle ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    AI Generate
+                  </>
+                )}
+              </button>
+            </div>
             <input
               type="text"
               value={formData.title}

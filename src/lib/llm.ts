@@ -239,3 +239,44 @@ export async function generateDescription(documentText: string): Promise<string>
 
   return result.text;
 }
+
+export async function generateTitle(documentText: string): Promise<string> {
+  const provider = (process.env.LLM_PROVIDER as LLMProvider) || "openrouter";
+  
+  if (provider === "openrouter") {
+    const model = process.env.LLM_MODEL || "anthropic/claude-3.5-sonnet";
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: `Generate a short, descriptive title for this document (max 10 words). The title should be clear and professional, like a document heading. Do not use quotes or punctuation at the end. Just output the title, nothing else.\n\nDocument content:\n${documentText}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to generate title");
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content.trim();
+  }
+
+  const model = getProvider();
+  if (!model) throw new Error("Provider not configured");
+
+  const result = await generateText({
+    model,
+    prompt: `Generate a short, descriptive title for this document (max 10 words). The title should be clear and professional, like a document heading. Do not use quotes or punctuation at the end. Just output the title, nothing else.\n\nDocument content:\n${documentText}`,
+  });
+
+  return result.text.trim();
+}
