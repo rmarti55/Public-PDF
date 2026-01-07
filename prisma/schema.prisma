@@ -6,7 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model Document {
@@ -16,8 +18,8 @@ model Document {
   category      String?
   fileName      String
   filePath      String
-  extractedText String   // For LLM context
-  context       String?  // Rich HTML context/background
+  extractedText String   @db.Text // For LLM context
+  context       String?  @db.Text // Rich HTML context/background
   published     Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

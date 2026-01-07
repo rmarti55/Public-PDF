@@ -100,7 +100,7 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
         </div>
 
         {/* Right Sidebar - Chat */}
-        <aside className="w-96 flex-shrink-0 border-l border-gray-200 bg-white overflow-hidden hidden xl:block">
+        <aside className="w-96 h-full flex-shrink-0 border-l border-gray-200 bg-white overflow-hidden hidden xl:block">
           <ChatPanel documentId={document.id} documentTitle={document.title} />
         </aside>
       </main>
