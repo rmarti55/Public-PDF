@@ -1,0 +1,96 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { extractTextFromPDF } from "@/lib/pdf";
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
+
+// GET all documents (public only gets published, admin gets all)
+export async function GET(request: NextRequest) {
+  const isAdmin = request.headers.get("x-admin-auth") === "true";
+
+  const documents = await prisma.document.findMany({
+    where: isAdmin ? {} : { published: true },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      category: true,
+      fileName: true,
+      filePath: true,
+      published: true,
+      createdAt: true,
+      updatedAt: true,
+      context: true,
+    },
+  });
+
+  return NextResponse.json(documents);
+}
+
+// POST create new document (admin only)
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+    const title = formData.get("title") as string;
+    const description = formData.get("description") as string | null;
+    const category = formData.get("category") as string | null;
+    const context = formData.get("context") as string | null;
+    const published = formData.get("published") === "true";
+
+    if (!file) {
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    if (!title) {
+      return NextResponse.json({ error: "Title is required" }, { status: 400 });
+    }
+
+    // Generate unique filename
+    const fileExtension = path.extname(file.name);
+    const uniqueFileName = `${uuidv4()}${fileExtension}`;
+    const uploadDir = path.join(process.cwd(), "public", "uploads");
+    const filePath = path.join(uploadDir, uniqueFileName);
+
+    // Ensure upload directory exists
+    await mkdir(uploadDir, { recursive: true });
+
+    // Write file to disk
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    await writeFile(filePath, buffer);
+
+    // Extract text from PDF
+    let extractedText = "";
+    try {
+      extractedText = await extractTextFromPDF(buffer);
+    } catch (error) {
+      console.error("Error extracting PDF text:", error);
+      // Continue even if extraction fails
+    }
+
+    // Create document in database
+    const document = await prisma.document.create({
+      data: {
+        title,
+        description,
+        category,
+        fileName: file.name,
+        filePath: `/uploads/${uniqueFileName}`,
+        extractedText,
+        context,
+        published,
+      },
+    });
+
+    return NextResponse.json(document, { status: 201 });
+  } catch (error) {
+    console.error("Error creating document:", error);
+    return NextResponse.json(
+      { error: "Failed to create document" },
+      { status: 500 }
+    );
+  }
+}
