@@ -2,6 +2,9 @@ import Link from "next/link";
 import DocumentCard from "@/components/DocumentCard";
 import { prisma } from "@/lib/db";
 
+// Force dynamic rendering to always show fresh data from database
+export const dynamic = 'force-dynamic';
+
 interface Document {
   id: string;
   title: string;
