@@ -161,13 +161,28 @@ say so clearly. Be concise and accurate in your responses.`;
 export async function summarizeDocument(documentText: string): Promise<string> {
   const provider = (process.env.LLM_PROVIDER as LLMProvider) || "openrouter";
   
+  console.log("[summarizeDocument] Starting summarization");
+  console.log("[summarizeDocument] Provider:", provider);
+  console.log("[summarizeDocument] Document text length:", documentText.length);
+  
   if (provider === "openrouter") {
     const model = process.env.LLM_MODEL || "anthropic/claude-3.5-sonnet";
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    
+    console.log("[summarizeDocument] Model:", model);
+    console.log("[summarizeDocument] API key present:", !!apiKey);
+    console.log("[summarizeDocument] API key length:", apiKey?.length || 0);
+    
+    if (!apiKey) {
+      console.error("[summarizeDocument] ERROR: OPENROUTER_API_KEY is not set!");
+      throw new Error("OpenRouter API key is not configured");
+    }
+    
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model,
@@ -180,11 +195,19 @@ export async function summarizeDocument(documentText: string): Promise<string> {
       }),
     });
 
+    console.log("[summarizeDocument] OpenRouter response status:", response.status);
+    
     if (!response.ok) {
-      throw new Error("Failed to summarize document");
+      const errorBody = await response.text();
+      console.error("[summarizeDocument] OpenRouter API error:");
+      console.error("[summarizeDocument] Status:", response.status);
+      console.error("[summarizeDocument] Status Text:", response.statusText);
+      console.error("[summarizeDocument] Error body:", errorBody);
+      throw new Error(`OpenRouter API error (${response.status}): ${errorBody}`);
     }
 
     const data = await response.json();
+    console.log("[summarizeDocument] Success! Response received");
     return data.choices[0].message.content;
   }
 
