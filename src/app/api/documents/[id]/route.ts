@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { put, del } from "@vercel/blob";
-import { extractTextFromPDF } from "@/lib/pdf";
+import { del } from "@vercel/blob";
 
 // GET single document
 export async function GET(
@@ -24,10 +23,13 @@ export async function GET(
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
-  return NextResponse.json(document);
+  // Exclude extractedText from response to avoid payload size limits
+  const { extractedText: _, ...documentWithoutText } = document;
+  return NextResponse.json(documentWithoutText);
 }
 
 // PUT update document (admin only)
+// Now accepts JSON with optional pre-uploaded blob URL
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -35,13 +37,21 @@ export async function PUT(
   const { id } = await params;
 
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const title = formData.get("title") as string;
-    const description = formData.get("description") as string | null;
-    const category = formData.get("category") as string | null;
-    const context = formData.get("context") as string | null;
-    const published = formData.get("published") === "true";
+    const body = await request.json();
+    const {
+      title,
+      description,
+      category,
+      context,
+      published,
+      fileName,
+      filePath,
+      extractedText,
+    } = body;
+
+    console.log("[PUT /api/documents] Updating document:", id);
+    console.log("[PUT /api/documents] Title:", title);
+    console.log("[PUT /api/documents] New file:", fileName || "(none)");
 
     const existingDoc = await prisma.document.findUnique({
       where: { id },
@@ -51,44 +61,33 @@ export async function PUT(
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
-    let updateData: Record<string, unknown> = {
+    // Build update data
+    const updateData: Record<string, unknown> = {
       title,
-      description,
-      category,
-      context,
-      published,
+      description: description || null,
+      category: category || null,
+      context: context || null,
+      published: published || false,
     };
 
-    // If a new file is uploaded
-    if (file && file.size > 0) {
+    // If a new file was uploaded (client sent new filePath)
+    if (filePath && filePath !== existingDoc.filePath) {
+      console.log("[PUT /api/documents] New file uploaded, deleting old file...");
+      
       // Delete old file from Vercel Blob
       try {
         await del(existingDoc.filePath);
+        console.log("[PUT /api/documents] Old file deleted");
       } catch {
-        // Ignore if file doesn't exist
+        console.log("[PUT /api/documents] Could not delete old file (may not exist)");
       }
 
-      // Upload new file to Vercel Blob
-      const blob = await put(file.name, file, {
-        access: "public",
-      });
-
-      // Extract text from new PDF
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      let extractedText = "";
-      try {
-        extractedText = await extractTextFromPDF(buffer);
-      } catch (error) {
-        console.error("Error extracting PDF text:", error);
+      updateData.fileName = fileName || existingDoc.fileName;
+      updateData.filePath = filePath;
+      
+      if (extractedText !== undefined) {
+        updateData.extractedText = extractedText;
       }
-
-      updateData = {
-        ...updateData,
-        fileName: file.name,
-        filePath: blob.url,
-        extractedText,
-      };
     }
 
     const document = await prisma.document.update({
@@ -96,9 +95,13 @@ export async function PUT(
       data: updateData,
     });
 
-    return NextResponse.json(document);
+    console.log("[PUT /api/documents] Document updated successfully");
+
+    // Exclude extractedText from response
+    const { extractedText: _, ...documentWithoutText } = document;
+    return NextResponse.json(documentWithoutText);
   } catch (error) {
-    console.error("Error updating document:", error);
+    console.error("[PUT /api/documents] Error:", error);
     return NextResponse.json(
       { error: "Failed to update document" },
       { status: 500 }

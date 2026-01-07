@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import AdminLayout from "@/components/AdminLayout";
 import { Sparkles, Loader2 } from "lucide-react";
 import { extractTextFromPDFClient } from "@/lib/pdf-client";
+import { upload } from "@vercel/blob/client";
 
 export default function NewDocument() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [summarizing, setSummarizing] = useState(false);
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [error, setError] = useState("");
@@ -31,22 +34,17 @@ export default function NewDocument() {
     setError("");
 
     try {
-      // Extract text from PDF in the browser
       console.log("[Generate Title] Extracting text from PDF...");
       const extractedText = await extractTextFromPDFClient(file);
       console.log("[Generate Title] Extracted text length:", extractedText?.length || 0);
       
       if (!extractedText || extractedText.trim().length === 0) {
-        console.log("[Generate Title] Error: No text extracted");
         throw new Error("Could not extract text from PDF");
       }
 
-      // Truncate on client side to avoid request payload limits (server truncates to 5K anyway)
       const truncatedText = extractedText.slice(0, 5000);
       console.log("[Generate Title] Truncated to:", truncatedText.length, "chars");
 
-      // Send extracted text to API for title generation
-      console.log("[Generate Title] Sending request to API...");
       const res = await fetch("/api/generate-title", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,12 +53,11 @@ export default function NewDocument() {
 
       if (!res.ok) {
         const errorData = await res.json();
-        console.log("[Generate Title] API error:", res.status, errorData);
         throw new Error(errorData.error || "Failed to generate title");
       }
 
       const { title } = await res.json();
-      console.log("[Generate Title] Success! Title:", title);
+      console.log("[Generate Title] Success:", title);
       setFormData((prev) => ({ ...prev, title }));
     } catch (err) {
       console.error("[Generate Title] Error:", err);
@@ -80,22 +77,17 @@ export default function NewDocument() {
     setError("");
 
     try {
-      // Extract text from PDF in the browser
       console.log("[Summarize] Extracting text from PDF...");
       const extractedText = await extractTextFromPDFClient(file);
       console.log("[Summarize] Extracted text length:", extractedText?.length || 0);
       
       if (!extractedText || extractedText.trim().length === 0) {
-        console.log("[Summarize] Error: No text extracted");
         throw new Error("Could not extract text from PDF");
       }
 
-      // Truncate on client side to avoid request payload limits (server truncates to 10K anyway)
       const truncatedText = extractedText.slice(0, 10000);
       console.log("[Summarize] Truncated to:", truncatedText.length, "chars");
 
-      // Send extracted text to API for summarization
-      console.log("[Summarize] Sending request to API...");
       const res = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -104,12 +96,11 @@ export default function NewDocument() {
 
       if (!res.ok) {
         const errorData = await res.json();
-        console.log("[Summarize] API error:", res.status, errorData);
         throw new Error(errorData.error || "Failed to summarize document");
       }
 
       const { summary } = await res.json();
-      console.log("[Summarize] Success! Summary length:", summary?.length || 0);
+      console.log("[Summarize] Success, length:", summary?.length || 0);
       setFormData((prev) => ({ ...prev, description: summary }));
     } catch (err) {
       console.error("[Summarize] Error:", err);
@@ -128,61 +119,81 @@ export default function NewDocument() {
 
     setLoading(true);
     setError("");
+    setUploadProgress(0);
 
     console.log("[Upload] Starting upload...");
-    console.log("[Upload] File name:", file.name);
-    console.log("[Upload] File size:", file.size, "bytes", `(${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-    console.log("[Upload] File type:", file.type);
-    console.log("[Upload] Form data - title:", formData.title);
-    console.log("[Upload] Form data - description length:", formData.description?.length || 0);
-    console.log("[Upload] Form data - category:", formData.category);
-    console.log("[Upload] Form data - context length:", formData.context?.length || 0);
-
-    // Warn if file is large (Vercel limit is 4.5MB for serverless functions)
-    if (file.size > 4 * 1024 * 1024) {
-      console.warn("[Upload] WARNING: File size exceeds 4MB, may hit Vercel limits!");
-    }
+    console.log("[Upload] File:", file.name, `(${(file.size / 1024 / 1024).toFixed(2)} MB)`);
 
     try {
-      const data = new FormData();
-      data.append("file", file);
-      data.append("title", formData.title);
-      data.append("description", formData.description);
-      data.append("category", formData.category);
-      data.append("context", formData.context);
-      data.append("published", formData.published.toString());
-
-      console.log("[Upload] Sending POST to /api/documents...");
-      const res = await fetch("/api/documents", {
-        method: "POST",
-        body: data,
+      // Step 1: Upload file directly to Vercel Blob (bypasses serverless function limit)
+      setUploadStatus("Uploading file to storage...");
+      console.log("[Upload] Step 1: Direct upload to Vercel Blob...");
+      
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+        multipart: true, // Enable multipart for large files
+        onUploadProgress: ({ percentage }) => {
+          setUploadProgress(Math.round(percentage));
+          console.log("[Upload] Progress:", Math.round(percentage) + "%");
+        },
       });
+      
+      console.log("[Upload] Blob uploaded:", blob.url);
 
-      console.log("[Upload] Response status:", res.status);
-      console.log("[Upload] Response ok:", res.ok);
-
-      if (!res.ok) {
-        const text = await res.text();
-        console.log("[Upload] Error response text:", text);
-        let errorMessage = "Failed to upload document";
-        try {
-          const errorData = JSON.parse(text);
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          // Server returned non-JSON (like "Request Entity Too Large")
-          errorMessage = text || `Upload failed with status ${res.status}`;
-        }
-        console.error("[Upload] Error:", errorMessage);
-        throw new Error(errorMessage);
+      // Step 2: Extract text from PDF in the browser
+      setUploadStatus("Extracting text from PDF...");
+      setUploadProgress(0);
+      console.log("[Upload] Step 2: Extracting text client-side...");
+      
+      let extractedText = "";
+      try {
+        extractedText = await extractTextFromPDFClient(file);
+        console.log("[Upload] Extracted text length:", extractedText.length);
+      } catch (extractError) {
+        console.warn("[Upload] Text extraction failed:", extractError);
+        // Continue without extracted text
       }
 
-      console.log("[Upload] Success! Redirecting to /admin...");
+      // Truncate for storage (500K chars max for LLM context)
+      const truncatedText = extractedText.slice(0, 500000);
+      console.log("[Upload] Truncated text for storage:", truncatedText.length, "chars");
+
+      // Step 3: Send metadata to API (small payload, no file)
+      setUploadStatus("Saving document...");
+      console.log("[Upload] Step 3: Sending metadata to API...");
+      
+      const res = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          context: formData.context,
+          published: formData.published,
+          fileName: file.name,
+          filePath: blob.url,
+          extractedText: truncatedText,
+        }),
+      });
+
+      console.log("[Upload] API response status:", res.status);
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to save document");
+      }
+
+      console.log("[Upload] Success! Redirecting...");
       router.push("/admin");
     } catch (err) {
-      console.error("[Upload] Caught error:", err);
+      console.error("[Upload] Error:", err);
       setError(err instanceof Error ? err.message : "Failed to upload document");
     } finally {
       setLoading(false);
+      setUploadStatus("");
+      setUploadProgress(0);
     }
   };
 
@@ -211,6 +222,11 @@ export default function NewDocument() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
               required
             />
+            {file && (
+              <p className="text-sm text-gray-500 mt-1">
+                {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+              </p>
+            )}
           </div>
 
           <div className="mb-6">
@@ -334,11 +350,30 @@ export default function NewDocument() {
             </label>
           </div>
 
+          {/* Upload Progress */}
+          {loading && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">{uploadStatus}</span>
+                {uploadProgress > 0 && (
+                  <span className="text-sm text-gray-500">{uploadProgress}%</span>
+                )}
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end space-x-4">
             <button
               type="button"
               onClick={() => router.back()}
               className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              disabled={loading}
             >
               Cancel
             </button>

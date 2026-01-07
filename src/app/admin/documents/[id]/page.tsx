@@ -3,6 +3,8 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import AdminLayout from "@/components/AdminLayout";
+import { upload } from "@vercel/blob/client";
+import { extractTextFromPDFClient } from "@/lib/pdf-client";
 
 interface Document {
   id: string;
@@ -24,6 +26,8 @@ export default function EditDocument({
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [error, setError] = useState("");
@@ -36,6 +40,7 @@ export default function EditDocument({
   });
   const [file, setFile] = useState<File | null>(null);
   const [currentFileName, setCurrentFileName] = useState("");
+  const [currentFilePath, setCurrentFilePath] = useState("");
 
   useEffect(() => {
     fetchDocument();
@@ -103,6 +108,7 @@ export default function EditDocument({
         published: doc.published,
       });
       setCurrentFileName(doc.fileName);
+      setCurrentFilePath(doc.filePath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load document");
     } finally {
@@ -114,21 +120,62 @@ export default function EditDocument({
     e.preventDefault();
     setSaving(true);
     setError("");
+    setUploadProgress(0);
 
     try {
-      const data = new FormData();
-      if (file) {
-        data.append("file", file);
-      }
-      data.append("title", formData.title);
-      data.append("description", formData.description);
-      data.append("category", formData.category);
-      data.append("context", formData.context);
-      data.append("published", formData.published.toString());
+      let newFilePath = currentFilePath;
+      let newFileName = currentFileName;
+      let newExtractedText: string | undefined;
 
+      // If a new file is selected, upload it directly to Vercel Blob
+      if (file) {
+        console.log("[Edit] Uploading new file:", file.name, `(${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+        
+        setUploadStatus("Uploading file...");
+        const blob = await upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/upload",
+          multipart: true,
+          onUploadProgress: ({ percentage }) => {
+            setUploadProgress(Math.round(percentage));
+          },
+        });
+        
+        newFilePath = blob.url;
+        newFileName = file.name;
+        console.log("[Edit] File uploaded:", blob.url);
+
+        // Extract text from new PDF
+        setUploadStatus("Extracting text...");
+        setUploadProgress(0);
+        try {
+          const extractedText = await extractTextFromPDFClient(file);
+          newExtractedText = extractedText.slice(0, 500000); // Truncate for storage
+          console.log("[Edit] Extracted text length:", newExtractedText.length);
+        } catch (extractError) {
+          console.warn("[Edit] Text extraction failed:", extractError);
+        }
+      }
+
+      // Send update to API
+      setUploadStatus("Saving changes...");
+      console.log("[Edit] Sending update to API...");
+      
       const res = await fetch(`/api/documents/${id}`, {
         method: "PUT",
-        body: data,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          context: formData.context,
+          published: formData.published,
+          ...(file && {
+            fileName: newFileName,
+            filePath: newFilePath,
+            extractedText: newExtractedText,
+          }),
+        }),
       });
 
       if (!res.ok) {
@@ -136,11 +183,15 @@ export default function EditDocument({
         throw new Error(errorData.error || "Failed to update document");
       }
 
+      console.log("[Edit] Success!");
       router.push("/admin");
     } catch (err) {
+      console.error("[Edit] Error:", err);
       setError(err instanceof Error ? err.message : "Failed to update document");
     } finally {
       setSaving(false);
+      setUploadStatus("");
+      setUploadProgress(0);
     }
   };
 
@@ -185,9 +236,16 @@ export default function EditDocument({
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
             />
-            <p className="text-sm text-gray-500 mt-1">
-              Leave empty to keep the current file
-            </p>
+            {file && (
+              <p className="text-sm text-gray-500 mt-1">
+                New file: {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+              </p>
+            )}
+            {!file && (
+              <p className="text-sm text-gray-500 mt-1">
+                Leave empty to keep the current file
+              </p>
+            )}
           </div>
 
           <div className="mb-6">
@@ -323,11 +381,32 @@ export default function EditDocument({
             </label>
           </div>
 
+          {/* Upload Progress */}
+          {saving && uploadStatus && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">{uploadStatus}</span>
+                {uploadProgress > 0 && (
+                  <span className="text-sm text-gray-500">{uploadProgress}%</span>
+                )}
+              </div>
+              {uploadProgress > 0 && (
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end space-x-4">
             <button
               type="button"
               onClick={() => router.back()}
               className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              disabled={saving}
             >
               Cancel
             </button>
