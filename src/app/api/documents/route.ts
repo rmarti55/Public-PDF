@@ -79,7 +79,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(document, { status: 201 });
+    // Exclude extractedText from response to avoid payload size limits
+    const { extractedText: _, ...documentWithoutText } = document;
+    return NextResponse.json(documentWithoutText, { status: 201 });
   } catch (error) {
     console.error("Error creating document:", error);
     return NextResponse.json(
