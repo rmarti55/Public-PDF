@@ -26,7 +26,14 @@ export async function POST(request: NextRequest) {
     }
 
     const documentContext = `Title: ${document.title}\n\n${document.extractedText}`;
-    const chatHistory = history || [];
+    
+    // Sanitize chat history - filter out empty messages and ensure content is string
+    const chatHistory = (history || [])
+      .filter((m: { role: string; content: string }) => m.content && m.content.trim())
+      .map((m: { role: string; content: string }) => ({
+        role: m.role as "user" | "assistant",
+        content: String(m.content).trim(),
+      }));
 
     const result = await chat(documentContext, message, chatHistory);
 

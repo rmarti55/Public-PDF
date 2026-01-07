@@ -26,11 +26,8 @@ function getProvider() {
       });
       return google(model);
     case "openrouter":
-      const openrouter = createOpenAI({
-        apiKey: process.env.OPENROUTER_API_KEY,
-        baseURL: "https://openrouter.ai/api/v1",
-      });
-      return openrouter(model);
+      // For OpenRouter, we'll use direct API calls
+      return null;
     default:
       throw new Error(`Unsupported LLM provider: ${provider}`);
   }
@@ -51,12 +48,77 @@ function getDefaultModel(provider: LLMProvider): string {
   }
 }
 
+// Direct OpenRouter streaming implementation
+async function openRouterStream(
+  systemPrompt: string,
+  messages: { role: "user" | "assistant"; content: string }[]
+): Promise<ReadableStream<Uint8Array>> {
+  const model = process.env.LLM_MODEL || "anthropic/claude-3.5-sonnet";
+  
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      stream: true,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages,
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenRouter API error: ${error}`);
+  }
+
+  // Transform the SSE stream to just text content
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+
+  return new ReadableStream({
+    async start(controller) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          break;
+        }
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+
+            try {
+              const json = JSON.parse(data);
+              const content = json.choices?.[0]?.delta?.content;
+              if (content) {
+                controller.enqueue(new TextEncoder().encode(content));
+              }
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
+    },
+  });
+}
+
 export async function chat(
   documentContext: string,
   userMessage: string,
   chatHistory: { role: "user" | "assistant"; content: string }[]
 ) {
-  const model = getProvider();
+  const provider = (process.env.LLM_PROVIDER as LLMProvider) || "openrouter";
 
   const systemPrompt = `You are a helpful assistant that answers questions about a specific document. 
 Here is the document content for context:
@@ -73,6 +135,20 @@ say so clearly. Be concise and accurate in your responses.`;
     { role: "user" as const, content: userMessage },
   ];
 
+  // Use direct API for OpenRouter
+  if (provider === "openrouter") {
+    const stream = await openRouterStream(systemPrompt, messages);
+    return {
+      toTextStreamResponse: () => new Response(stream, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      }),
+    };
+  }
+
+  // Use AI SDK for other providers
+  const model = getProvider();
+  if (!model) throw new Error("Provider not configured");
+
   const result = await streamText({
     model,
     system: systemPrompt,
@@ -83,27 +159,82 @@ say so clearly. Be concise and accurate in your responses.`;
 }
 
 export async function summarizeDocument(documentText: string): Promise<string> {
+  const provider = (process.env.LLM_PROVIDER as LLMProvider) || "openrouter";
+  
+  if (provider === "openrouter") {
+    const model = process.env.LLM_MODEL || "anthropic/claude-3.5-sonnet";
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: `Please provide a brief summary (2-3 sentences) of the following document:\n\n${documentText}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to summarize document");
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  }
+
   const model = getProvider();
+  if (!model) throw new Error("Provider not configured");
 
   const result = await generateText({
     model,
-    prompt: `Please provide a brief summary (2-3 sentences) of the following document:
-
-${documentText}`,
+    prompt: `Please provide a brief summary (2-3 sentences) of the following document:\n\n${documentText}`,
   });
 
   return result.text;
 }
 
 export async function generateDescription(documentText: string): Promise<string> {
+  const provider = (process.env.LLM_PROVIDER as LLMProvider) || "openrouter";
+  
+  if (provider === "openrouter") {
+    const model = process.env.LLM_MODEL || "anthropic/claude-3.5-sonnet";
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: `Write a single concise sentence (max 20 words) describing what this document is about. Focus on the main topic and purpose. Do not start with "This document" - just state what it is directly.\n\nDocument content:\n${documentText}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to generate description");
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  }
+
   const model = getProvider();
+  if (!model) throw new Error("Provider not configured");
 
   const result = await generateText({
     model,
-    prompt: `Write a single concise sentence (max 20 words) describing what this document is about. Focus on the main topic and purpose. Do not start with "This document" - just state what it is directly.
-
-Document content:
-${documentText}`,
+    prompt: `Write a single concise sentence (max 20 words) describing what this document is about. Focus on the main topic and purpose. Do not start with "This document" - just state what it is directly.\n\nDocument content:\n${documentText}`,
   });
 
   return result.text;
