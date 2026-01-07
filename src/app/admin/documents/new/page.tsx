@@ -122,8 +122,16 @@ export default function NewDocument() {
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to upload document");
+        const text = await res.text();
+        let errorMessage = "Failed to upload document";
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // Server returned non-JSON (like "Request Entity Too Large")
+          errorMessage = text || `Upload failed with status ${res.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       router.push("/admin");
