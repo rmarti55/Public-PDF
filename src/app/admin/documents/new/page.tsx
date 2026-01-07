@@ -55,12 +55,15 @@ export default function NewDocument() {
 
       if (!res.ok) {
         const errorData = await res.json();
+        console.log("[Generate Title] API error:", res.status, errorData);
         throw new Error(errorData.error || "Failed to generate title");
       }
 
       const { title } = await res.json();
+      console.log("[Generate Title] Success! Title:", title);
       setFormData((prev) => ({ ...prev, title }));
     } catch (err) {
+      console.error("[Generate Title] Error:", err);
       setError(err instanceof Error ? err.message : "Failed to generate title");
     } finally {
       setGeneratingTitle(false);
@@ -101,12 +104,15 @@ export default function NewDocument() {
 
       if (!res.ok) {
         const errorData = await res.json();
+        console.log("[Summarize] API error:", res.status, errorData);
         throw new Error(errorData.error || "Failed to summarize document");
       }
 
       const { summary } = await res.json();
+      console.log("[Summarize] Success! Summary length:", summary?.length || 0);
       setFormData((prev) => ({ ...prev, description: summary }));
     } catch (err) {
+      console.error("[Summarize] Error:", err);
       setError(err instanceof Error ? err.message : "Failed to summarize document");
     } finally {
       setSummarizing(false);
