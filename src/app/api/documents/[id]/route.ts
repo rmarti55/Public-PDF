@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { unlink, writeFile } from "fs/promises";
-import path from "path";
-import { v4 as uuidv4 } from "uuid";
+import { put, del } from "@vercel/blob";
 import { extractTextFromPDF } from "@/lib/pdf";
 
 // GET single document
@@ -63,25 +61,21 @@ export async function PUT(
 
     // If a new file is uploaded
     if (file && file.size > 0) {
-      // Delete old file
-      const oldFilePath = path.join(process.cwd(), "public", existingDoc.filePath);
+      // Delete old file from Vercel Blob
       try {
-        await unlink(oldFilePath);
+        await del(existingDoc.filePath);
       } catch {
         // Ignore if file doesn't exist
       }
 
-      // Save new file
-      const fileExtension = path.extname(file.name);
-      const uniqueFileName = `${uuidv4()}${fileExtension}`;
-      const uploadDir = path.join(process.cwd(), "public", "uploads");
-      const filePath = path.join(uploadDir, uniqueFileName);
-
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      await writeFile(filePath, buffer);
+      // Upload new file to Vercel Blob
+      const blob = await put(file.name, file, {
+        access: "public",
+      });
 
       // Extract text from new PDF
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
       let extractedText = "";
       try {
         extractedText = await extractTextFromPDF(buffer);
@@ -92,7 +86,7 @@ export async function PUT(
       updateData = {
         ...updateData,
         fileName: file.name,
-        filePath: `/uploads/${uniqueFileName}`,
+        filePath: blob.url,
         extractedText,
       };
     }
@@ -128,10 +122,9 @@ export async function DELETE(
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
-    // Delete file from disk
-    const filePath = path.join(process.cwd(), "public", document.filePath);
+    // Delete file from Vercel Blob
     try {
-      await unlink(filePath);
+      await del(document.filePath);
     } catch {
       // Ignore if file doesn't exist
     }

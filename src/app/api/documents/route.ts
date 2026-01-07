@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { extractTextFromPDF } from "@/lib/pdf";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
-import { v4 as uuidv4 } from "uuid";
+import { put } from "@vercel/blob";
 
 // GET all documents (public only gets published, admin gets all)
 export async function GET(request: NextRequest) {
@@ -48,21 +46,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
 
-    // Generate unique filename
-    const fileExtension = path.extname(file.name);
-    const uniqueFileName = `${uuidv4()}${fileExtension}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    const filePath = path.join(uploadDir, uniqueFileName);
-
-    // Ensure upload directory exists
-    await mkdir(uploadDir, { recursive: true });
-
-    // Write file to disk
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    await writeFile(filePath, buffer);
+    // Upload file to Vercel Blob
+    const blob = await put(file.name, file, {
+      access: "public",
+    });
 
     // Extract text from PDF
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
     let extractedText = "";
     try {
       extractedText = await extractTextFromPDF(buffer);
@@ -78,7 +69,7 @@ export async function POST(request: NextRequest) {
         description,
         category,
         fileName: file.name,
-        filePath: `/uploads/${uniqueFileName}`,
+        filePath: blob.url,
         extractedText,
         context,
         published,
