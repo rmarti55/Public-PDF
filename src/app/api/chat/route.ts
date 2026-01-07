@@ -77,11 +77,34 @@ export async function POST(request: NextRequest) {
       }
     })();
 
-    return new Response(responseStream, {
+    // Create a new stream that prepends metadata before the actual content
+    // This is more reliable than custom headers for streaming responses
+    const metadataPrefix = `__META__${JSON.stringify({ model: OPENROUTER_MODEL })}__END_META__`;
+    const encoder = new TextEncoder();
+    
+    const streamWithMetadata = new ReadableStream({
+      async start(controller) {
+        // Send metadata first
+        controller.enqueue(encoder.encode(metadataPrefix));
+        
+        // Then pipe through the actual response
+        const reader = responseStream.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(streamWithMetadata, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Transfer-Encoding": "chunked",
-        "X-Model-Name": OPENROUTER_MODEL,
       },
     });
   } catch (error) {

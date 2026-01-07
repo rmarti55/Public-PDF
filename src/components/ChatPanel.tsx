@@ -19,6 +19,9 @@ interface Message {
 // Regex to match [page X] pattern (case insensitive)
 const PAGE_LINK_REGEX = /\[page\s+(\d+)\]/gi;
 
+// Regex to match metadata prefix in stream
+const METADATA_REGEX = /^__META__(.+?)__END_META__/;
+
 export default function ChatPanel({
   documentId,
   documentTitle,
@@ -106,31 +109,70 @@ export default function ChatPanel({
         throw new Error(errorData.error || "Failed to get response");
       }
 
-      const modelName = response.headers.get("X-Model-Name") || undefined;
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No response body");
 
       const assistantMessageId = (Date.now() + 1).toString();
       setMessages((prev) => [
         ...prev,
-        { id: assistantMessageId, role: "assistant", content: "", model: modelName },
+        { id: assistantMessageId, role: "assistant", content: "" },
       ]);
 
       const decoder = new TextDecoder();
       let done = false;
+      let isFirstChunk = true;
+      let modelName: string | undefined;
+      let buffer = "";
 
       while (!done) {
         const { value, done: readerDone } = await reader.read();
         done = readerDone;
         if (value) {
-          const chunk = decoder.decode(value, { stream: true });
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMessageId
-                ? { ...m, content: m.content + chunk }
-                : m
-            )
-          );
+          let chunk = decoder.decode(value, { stream: true });
+          
+          // Check for metadata in first chunk(s)
+          if (isFirstChunk) {
+            buffer += chunk;
+            const metadataMatch = buffer.match(METADATA_REGEX);
+            if (metadataMatch) {
+              try {
+                const metadata = JSON.parse(metadataMatch[1]);
+                modelName = metadata.model;
+                // Update the message with the model name
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessageId
+                      ? { ...m, model: modelName }
+                      : m
+                  )
+                );
+              } catch {
+                // Ignore parse errors
+              }
+              // Remove metadata from the buffer and continue with remaining content
+              chunk = buffer.replace(METADATA_REGEX, "");
+              isFirstChunk = false;
+              buffer = "";
+            } else if (buffer.length > 200) {
+              // If buffer gets too long without finding metadata, just use it as content
+              chunk = buffer;
+              isFirstChunk = false;
+              buffer = "";
+            } else {
+              // Keep buffering, don't output yet
+              continue;
+            }
+          }
+          
+          if (chunk) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMessageId
+                  ? { ...m, content: m.content + chunk }
+                  : m
+              )
+            );
+          }
         }
       }
 
