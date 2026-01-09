@@ -39,7 +39,7 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 flex-shrink-0 fixed top-0 left-0 right-0 z-50">
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
@@ -83,7 +83,7 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
         </aside>
 
         {/* PDF Viewer and Chat - shared state */}
-        <div className="flex-1 flex lg:ml-80">
+        <div className="flex-1 flex lg:ml-80 overflow-hidden">
           <DocumentContent
             documentId={document.id}
             documentTitle={document.title}
