@@ -25,7 +25,7 @@ export default function ChatPanel({
   documentTitle,
   onGoToPage,
 }: ChatPanelProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState(true);
   const [inputValue, setInputValue] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -34,7 +34,9 @@ export default function ChatPanel({
   const [error, setError] = useState<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
   }, []);
 
   // Load existing messages on mount
@@ -226,7 +228,7 @@ export default function ChatPanel({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col">
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col">
         <div className="mt-auto space-y-4">
           {!hasApiKey && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
@@ -355,7 +357,6 @@ export default function ChatPanel({
             </div>
           )}
 
-          <div ref={messagesEndRef} />
         </div>
       </div>
 

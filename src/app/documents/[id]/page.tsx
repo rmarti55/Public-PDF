@@ -41,7 +41,7 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 flex-shrink-0">
+      <header className="bg-white border-b border-gray-200 flex-shrink-0 fixed top-0 left-0 right-0 z-50">
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center h-16">
             <Link
@@ -68,7 +68,7 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex overflow-hidden pt-16">
         {/* Left Sidebar - Context */}
         <aside className="w-80 flex-shrink-0 border-r border-gray-200 bg-white overflow-hidden hidden lg:block">
           <ContextSidebar

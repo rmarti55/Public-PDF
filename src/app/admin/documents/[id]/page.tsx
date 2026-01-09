@@ -63,6 +63,42 @@ export default function EditDocument({
     fetchDocument();
   }, [id]);
 
+  // Upload file helper with server fallback
+  const uploadThumbnail = async (file: File): Promise<string> => {
+    try {
+      // Try client-side upload first
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+      });
+      return blob.url;
+    } catch (uploadError) {
+      // Fallback to server upload
+      console.log("[Thumbnail] Direct upload failed, falling back to server upload...", uploadError);
+      
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const uploadRes = await fetch("/api/upload-server", {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!uploadRes.ok) {
+        const text = await uploadRes.text();
+        try {
+          const err = JSON.parse(text);
+          throw new Error(err.error || "Upload failed");
+        } catch {
+          throw new Error(text || "Upload failed");
+        }
+      }
+      
+      const { url } = await uploadRes.json();
+      return url;
+    }
+  };
+
   const handleRegenerateThumbnail = async () => {
     if (!initialData?.filePath) return;
     
@@ -79,11 +115,8 @@ export default function EditDocument({
         { type: "image/png" }
       );
 
-      // Upload thumbnail to Vercel Blob
-      const thumbnailBlobResult = await upload(thumbnailFile.name, thumbnailFile, {
-        access: "public",
-        handleUploadUrl: "/api/upload",
-      });
+      // Upload thumbnail with fallback
+      const thumbnailUrl = await uploadThumbnail(thumbnailFile);
 
       // Update the document with the new thumbnail URL
       const res = await fetch(`/api/documents/${id}`, {
@@ -95,7 +128,7 @@ export default function EditDocument({
           category: initialData.category,
           context: initialData.context,
           published: initialData.published,
-          thumbnailUrl: thumbnailBlobResult.url,
+          thumbnailUrl: thumbnailUrl,
         }),
       });
 
@@ -103,7 +136,7 @@ export default function EditDocument({
         throw new Error("Failed to update document with new thumbnail");
       }
 
-      setThumbnailUrl(thumbnailBlobResult.url);
+      setThumbnailUrl(thumbnailUrl);
       setRegenerateSuccess(true);
     } catch (err) {
       setRegenerateError(err instanceof Error ? err.message : "Failed to regenerate thumbnail");
