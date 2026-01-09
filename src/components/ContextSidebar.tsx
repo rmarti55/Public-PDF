@@ -189,7 +189,7 @@ export default function ContextSidebar({
       </div>
 
       {/* Context Section */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-hidden p-6">
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">
           Background & Context
         </label>

@@ -1,3 +1,6 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -15,6 +18,8 @@ interface DocumentTableProps {
 }
 
 export default function DocumentTable({ documents }: DocumentTableProps) {
+  const router = useRouter();
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="overflow-x-auto">
@@ -39,7 +44,8 @@ export default function DocumentTable({ documents }: DocumentTableProps) {
             {documents.map((doc) => (
               <tr
                 key={doc.id}
-                className="hover:bg-gray-50 transition-colors"
+                className="hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => router.push(`/documents/${doc.id}`)}
               >
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">

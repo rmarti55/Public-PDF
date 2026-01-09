@@ -70,7 +70,7 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden pt-16">
         {/* Left Sidebar - Context */}
-        <aside className="w-80 flex-shrink-0 border-r border-gray-200 bg-white overflow-hidden hidden lg:block">
+        <aside className="w-80 border-r border-gray-200 bg-white overflow-hidden hidden lg:block fixed top-16 left-0 bottom-0 z-40">
           <ContextSidebar
             documentId={document.id}
             title={document.title}
@@ -83,12 +83,14 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
         </aside>
 
         {/* PDF Viewer and Chat - shared state */}
-        <DocumentContent
-          documentId={document.id}
-          documentTitle={document.title}
-          filePath={document.filePath}
-          category={document.category}
-        />
+        <div className="flex-1 flex lg:ml-80">
+          <DocumentContent
+            documentId={document.id}
+            documentTitle={document.title}
+            filePath={document.filePath}
+            category={document.category}
+          />
+        </div>
       </main>
 
       {/* Mobile Chat Toggle */}
