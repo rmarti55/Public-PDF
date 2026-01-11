@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ImageIcon } from "lucide-react";
+import { Loader2, ImageIcon, FileText } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import AdminLayout from "@/components/AdminLayout";
 import DocumentForm, { DocumentFormInitialData } from "@/components/DocumentForm";
@@ -34,6 +34,9 @@ export default function EditDocument({
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState("");
   const [regenerateSuccess, setRegenerateSuccess] = useState(false);
+  const [reextracting, setReextracting] = useState(false);
+  const [reextractError, setReextractError] = useState("");
+  const [reextractSuccess, setReextractSuccess] = useState(false);
 
   useEffect(() => {
     async function fetchDocument() {
@@ -145,6 +148,29 @@ export default function EditDocument({
     }
   };
 
+  const handleReextractText = async () => {
+    setReextracting(true);
+    setReextractError("");
+    setReextractSuccess(false);
+
+    try {
+      const res = await fetch(`/api/documents/${id}/reextract`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to re-extract text");
+      }
+
+      setReextractSuccess(true);
+    } catch (err) {
+      setReextractError(err instanceof Error ? err.message : "Failed to re-extract text");
+    } finally {
+      setReextracting(false);
+    }
+  };
+
   if (loading) {
     return (
       <AdminLayout>
@@ -226,6 +252,58 @@ export default function EditDocument({
                   <>
                     <ImageIcon className="w-4 h-4" />
                     {thumbnailUrl ? "Regenerate Thumbnail" : "Generate Thumbnail"}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Text Extraction Section */}
+        <div className="bg-white rounded-xl shadow p-6 mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Text Extraction</h2>
+          
+          <div className="flex items-start gap-6">
+            <div className="w-40 h-52 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 border border-gray-200">
+              <div className="text-center text-gray-400">
+                <FileText className="w-10 h-10 mx-auto mb-2" />
+                <span className="text-xs">PDF Text</span>
+              </div>
+            </div>
+
+            <div className="flex-grow">
+              <p className="text-sm text-gray-600 mb-4">
+                Re-extract text from the PDF to update page references for the AI assistant. 
+                This is useful after updates to text extraction that improve page number accuracy.
+              </p>
+              
+              {reextractError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {reextractError}
+                </div>
+              )}
+              
+              {reextractSuccess && (
+                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                  Text re-extracted successfully! Page references are now updated.
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleReextractText}
+                disabled={reextracting}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {reextracting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Extracting...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    Re-extract Text
                   </>
                 )}
               </button>

@@ -1,22 +1,19 @@
 "use client";
 
-let pdfjs: typeof import("react-pdf").pdfjs | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pdfjsLib: any = null;
 
 async function getPdfjs() {
   if (typeof window === "undefined") {
     throw new Error("PDF thumbnail generation is only available in the browser");
   }
   
-  if (!pdfjs) {
-    const reactPdf = await import("react-pdf");
-    pdfjs = reactPdf.pdfjs;
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url
-    ).toString();
+  if (!pdfjsLib) {
+    pdfjsLib = await import("pdfjs-dist");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
   }
   
-  return pdfjs;
+  return pdfjsLib;
 }
 
 const THUMBNAIL_WIDTH = 400;
@@ -63,7 +60,6 @@ export async function generateThumbnailFromPDF(file: File): Promise<Blob> {
   await page.render({
     canvasContext: context,
     viewport: scaledViewport,
-    canvas: canvas,
   }).promise;
 
   // Convert canvas to blob
@@ -128,7 +124,6 @@ export async function generateThumbnailFromURL(pdfUrl: string): Promise<Blob> {
   await page.render({
     canvasContext: context,
     viewport: scaledViewport,
-    canvas: canvas,
   }).promise;
 
   // Convert canvas to blob

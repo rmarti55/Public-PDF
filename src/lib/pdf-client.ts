@@ -1,31 +1,28 @@
 "use client";
 
-let pdfjs: typeof import("react-pdf").pdfjs | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pdfjsLib: any = null;
 
 async function getPdfjs() {
   if (typeof window === "undefined") {
     throw new Error("PDF extraction is only available in the browser");
   }
   
-  if (!pdfjs) {
-    const reactPdf = await import("react-pdf");
-    pdfjs = reactPdf.pdfjs;
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url
-    ).toString();
+  if (!pdfjsLib) {
+    pdfjsLib = await import("pdfjs-dist");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
   }
   
-  return pdfjs;
+  return pdfjsLib;
 }
 
 /**
  * Extract text from a PDF file in the browser
  */
 export async function extractTextFromPDFClient(file: File): Promise<string> {
-  const pdf = await getPdfjs();
+  const pdfLib = await getPdfjs();
   const arrayBuffer = await file.arrayBuffer();
-  const doc = await pdf.getDocument({ data: arrayBuffer }).promise;
+  const doc = await pdfLib.getDocument({ data: arrayBuffer }).promise;
   
   const textParts: string[] = [];
   
@@ -33,7 +30,7 @@ export async function extractTextFromPDFClient(file: File): Promise<string> {
     const page = await doc.getPage(i);
     const textContent = await page.getTextContent();
     const pageText = textContent.items
-      .map((item) => ("str" in item ? item.str : ""))
+      .map((item: { str?: string }) => item.str || "")
       .join(" ");
     textParts.push(pageText);
   }

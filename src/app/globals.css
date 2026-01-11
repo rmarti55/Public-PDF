@@ -49,14 +49,9 @@ body {
   overflow: hidden;
 }
 
-/* PDF Viewer styles */
-.react-pdf__Page {
-  margin: 0 auto;
-}
-
-.react-pdf__Page canvas {
-  max-width: 100%;
-  height: auto !important;
+/* PDF Viewer container */
+.rpv-core__viewer {
+  height: 100%;
 }
 
 /* Prose styles for context */

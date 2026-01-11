@@ -1,32 +1,23 @@
-import type { TextItem } from "pdfjs-dist/types/src/display/api";
-
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
-    // Dynamic import to avoid issues with Next.js bundling
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParseModule = require("pdf-parse");
+    const pdfParse = pdfParseModule.default || pdfParseModule;
     
-    // Convert Buffer to Uint8Array as required by pdfjs-dist
-    const uint8Array = new Uint8Array(buffer);
-    
-    // Load the PDF document with verbosity disabled
-    const loadingTask = pdfjsLib.getDocument({ 
-      data: uint8Array,
-      verbosity: 0, // Suppress warnings
-    });
-    const pdf = await loadingTask.promise;
-    
-    // Extract text from all pages
     const textParts: string[] = [];
+    let pageNum = 0;
     
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .filter((item): item is TextItem => 'str' in item)
-        .map((item) => item.str)
-        .join(" ");
-      textParts.push(pageText);
-    }
+    await pdfParse(buffer, {
+      pagerender: async (pageData: { getTextContent: () => Promise<{ items: { str?: string }[] }> }) => {
+        pageNum++;
+        const textContent = await pageData.getTextContent();
+        const pageText = textContent.items
+          .map((item) => item.str || "")
+          .join(" ");
+        textParts.push(`--- Page ${pageNum} ---\n${pageText}`);
+        return pageText;
+      }
+    });
     
     return textParts.join("\n\n");
   } catch (error) {

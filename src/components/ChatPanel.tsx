@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useChat, UIMessage } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 import MessageContent from "./MessageContent";
 
 interface ChatPanelProps {
@@ -8,17 +10,6 @@ interface ChatPanelProps {
   documentTitle: string;
   onGoToPage?: (page: number) => void;
 }
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  model?: string;
-  responseTime?: number;
-}
-
-// Regex to match metadata prefix in stream
-const METADATA_REGEX = /^__META__(.+?)__END_META__/;
 
 export default function ChatPanel({
   documentId,
@@ -28,10 +19,42 @@ export default function ChatPanel({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState(true);
   const [inputValue, setInputValue] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const { messages, sendMessage, status, error } = useChat({
+    id: documentId,
+    messages: initialMessages,
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+      prepareSendMessagesRequest: ({ messages }) => {
+        const lastMessage = messages[messages.length - 1];
+        const messageText = lastMessage?.parts
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .join("") || "";
+        
+        return {
+          body: {
+            documentId,
+            message: messageText,
+            history: messages.slice(0, -1).map((m) => ({
+              role: m.role,
+              content: m.parts
+                .filter((p): p is { type: "text"; text: string } => p.type === "text")
+                .map((p) => p.text)
+                .join(""),
+            })),
+          },
+        };
+      },
+    }),
+    onError: (error) => {
+      if (error.message?.includes("API key")) {
+        setHasApiKey(false);
+      }
+    },
+  });
 
   const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -46,13 +69,13 @@ export default function ChatPanel({
         const response = await fetch(`/api/documents/${documentId}/messages`);
         if (response.ok) {
           const data = await response.json();
-          setMessages(
-            data.messages.map((m: { id: string; role: string; content: string }) => ({
-              id: m.id,
-              role: m.role as "user" | "assistant",
-              content: m.content,
-            }))
-          );
+          const loaded: UIMessage[] = data.messages.map((m: { id: string; role: string; content: string }) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            parts: [{ type: "text" as const, text: m.content }],
+            createdAt: new Date(),
+          }));
+          setInitialMessages(loaded);
         }
       } catch (err) {
         console.error("Failed to load chat history:", err);
@@ -67,129 +90,21 @@ export default function ChatPanel({
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  const handleSubmit = async (e?: React.FormEvent, directMessage?: string) => {
+  const handleSubmit = (e?: React.FormEvent, directMessage?: string) => {
     e?.preventDefault();
     const messageToSend = directMessage || inputValue.trim();
-    if (!messageToSend || isLoading || !hasApiKey) return;
+    if (!messageToSend || status !== "ready" || !hasApiKey) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: messageToSend,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+    sendMessage({ text: messageToSend });
     setInputValue("");
-    setIsLoading(true);
-    setError(null);
+  };
 
-    try {
-      const startTime = performance.now();
-      
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          documentId,
-          message: userMessage.content,
-          history: messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (response.status === 401 || errorData.error?.includes("API key")) {
-          setHasApiKey(false);
-        }
-        throw new Error(errorData.error || "Failed to get response");
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const assistantMessageId = (Date.now() + 1).toString();
-      setMessages((prev) => [
-        ...prev,
-        { id: assistantMessageId, role: "assistant", content: "" },
-      ]);
-
-      const decoder = new TextDecoder();
-      let done = false;
-      let isFirstChunk = true;
-      let modelName: string | undefined;
-      let buffer = "";
-
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        if (value) {
-          let chunk = decoder.decode(value, { stream: true });
-          
-          // Check for metadata in first chunk(s)
-          if (isFirstChunk) {
-            buffer += chunk;
-            const metadataMatch = buffer.match(METADATA_REGEX);
-            if (metadataMatch) {
-              try {
-                const metadata = JSON.parse(metadataMatch[1]);
-                modelName = metadata.model;
-                // Update the message with the model name
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? { ...m, model: modelName }
-                      : m
-                  )
-                );
-              } catch {
-                // Ignore parse errors
-              }
-              // Remove metadata from the buffer and continue with remaining content
-              chunk = buffer.replace(METADATA_REGEX, "");
-              isFirstChunk = false;
-              buffer = "";
-            } else if (buffer.length > 200) {
-              // If buffer gets too long without finding metadata, just use it as content
-              chunk = buffer;
-              isFirstChunk = false;
-              buffer = "";
-            } else {
-              // Keep buffering, don't output yet
-              continue;
-            }
-          }
-          
-          if (chunk) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMessageId
-                  ? { ...m, content: m.content + chunk }
-                  : m
-              )
-            );
-          }
-        }
-      }
-
-      // Calculate response time after stream completes
-      const responseTime = Math.round(performance.now() - startTime);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMessageId
-            ? { ...m, responseTime }
-            : m
-        )
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setIsLoading(false);
-    }
+  // Helper to extract text from message parts
+  const getMessageText = (message: UIMessage): string => {
+    return message.parts
+      .filter((part): part is { type: "text"; text: string } => part.type === "text")
+      .map((part) => part.text)
+      .join("");
   };
 
   const suggestedQuestions = [
@@ -197,6 +112,8 @@ export default function ChatPanel({
     "What are the key points?",
     "Summarize the main findings",
   ];
+
+  const isLoading = status === "submitted" || status === "streaming";
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -305,35 +222,15 @@ export default function ChatPanel({
                 }`}
               >
                 {message.role === "user" ? (
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p className="text-sm whitespace-pre-wrap">{getMessageText(message)}</p>
                 ) : (
-                  <MessageContent content={message.content} onGoToPage={onGoToPage} />
-                )}
-                {message.role === "assistant" && (message.model || message.responseTime) && (
-                  <div className="mt-2 pt-2 border-t border-gray-200 flex items-center gap-2 text-xs text-gray-500">
-                    {message.model && (
-                      <span className="flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        {message.model.split("/").pop()?.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                      </span>
-                    )}
-                    {message.responseTime && (
-                      <span className="flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        {(message.responseTime / 1000).toFixed(1)}s
-                      </span>
-                    )}
-                  </div>
+                  <MessageContent content={getMessageText(message)} onGoToPage={onGoToPage} />
                 )}
               </div>
             </div>
           ))}
 
-          {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
+          {status === "submitted" && (
             <div className="flex justify-start">
               <div className="bg-gray-100 rounded-2xl px-4 py-3">
                 <div className="flex space-x-2">
@@ -353,7 +250,7 @@ export default function ChatPanel({
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-              Error: {error}
+              Error: {error.message}
             </div>
           )}
 

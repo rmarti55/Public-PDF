@@ -1,144 +1,75 @@
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { streamText, generateText } from "ai";
+
 export const OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5";
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-async function callOpenRouter(
-  messages: { role: string; content: string }[]
-): Promise<string> {
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    },
-    body: JSON.stringify({ model: OPENROUTER_MODEL, messages }),
-  });
+// Create OpenRouter provider using OpenAI-compatible interface
+const openrouter = createOpenAICompatible({
+  name: "openrouter",
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`OpenRouter error (${response.status}): ${errorBody}`);
-  }
+const CHAT_SYSTEM_PROMPT = `You analyze documents as a bike and pedestrian advocate.
 
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
+Your perspective:
+- Streets should be designed so 8-year-olds and 80-year-olds can safely bike and walk
+- Induced demand is real—you can't build your way out of congestion
+- Parking minimums destroy cities
+- "Level of service" for cars is a policy choice that kills people
+- If Amsterdam and Copenhagen did it, American cities have no excuse—just political will
+- Move fast: use paint, don't let perfect be the enemy of good
 
-async function streamOpenRouter(
-  systemPrompt: string,
-  messages: { role: "user" | "assistant"; content: string }[]
-): Promise<ReadableStream<Uint8Array>> {
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
-      stream: true,
-      messages: [{ role: "system", content: systemPrompt }, ...messages],
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenRouter error: ${error}`);
-  }
-
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-
-  return new ReadableStream({
-    async start(controller) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.close();
-          break;
-        }
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
-
-            try {
-              const json = JSON.parse(data);
-              const content = json.choices?.[0]?.delta?.content;
-              if (content) {
-                controller.enqueue(new TextEncoder().encode(content));
-              }
-            } catch {
-              // Skip malformed JSON
-            }
-          }
-        }
-      }
-    },
-  });
-}
+Be concise and direct. Use bullets for lists. Call out car-centric assumptions. Identify opportunities to reallocate road space to people. Reference pages using the PDF page numbers from the "--- Page X ---" markers, as [page X].`;
 
 export async function chat(
   documentContext: string,
   userMessage: string,
   chatHistory: { role: "user" | "assistant"; content: string }[]
 ) {
-  const systemPrompt = `You are a helpful assistant that answers questions about a specific document. 
-Here is the document content for context:
+  const systemPrompt = `${CHAT_SYSTEM_PROMPT}
 
 <document>
 ${documentContext}
-</document>
-
-Please answer questions based on this document. If the question cannot be answered from the document, 
-say so clearly. Be concise and accurate in your responses.
-
-When referencing specific pages in the document, use the format [page X] (e.g., [page 5]) so users can click to navigate directly to that page.`;
+</document>`;
 
   const messages = [
-    ...chatHistory,
+    ...chatHistory.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
     { role: "user" as const, content: userMessage },
   ];
 
-  const stream = await streamOpenRouter(systemPrompt, messages);
-
-  return {
-    stream,
-    toTextStreamResponse: () =>
-      new Response(stream, {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      }),
-  };
+  return streamText({
+    model: openrouter.chatModel(OPENROUTER_MODEL),
+    system: systemPrompt,
+    messages,
+  });
 }
 
 export async function summarizeDocument(documentText: string): Promise<string> {
-  return callOpenRouter([
-    {
-      role: "user",
-      content: `Please provide a brief summary (2-3 sentences) of the following document:\n\n${documentText}`,
-    },
-  ]);
+  const { text } = await generateText({
+    model: openrouter.chatModel(OPENROUTER_MODEL),
+    prompt: `Summarize in 2-3 sentences from a bike/pedestrian advocacy lens. What does this mean for people walking, biking, and taking transit? Flag car-centric assumptions or opportunities.\n\n${documentText}`,
+  });
+  return text;
 }
 
 export async function generateDescription(
   documentText: string
 ): Promise<string> {
-  return callOpenRouter([
-    {
-      role: "user",
-      content: `Write a single concise sentence (max 20 words) describing what this document is about. Focus on the main topic and purpose. Do not start with "This document" - just state what it is directly.\n\nDocument content:\n${documentText}`,
-    },
-  ]);
+  const { text } = await generateText({
+    model: openrouter.chatModel(OPENROUTER_MODEL),
+    prompt: `One sentence (max 20 words): what does this document mean for bikes, pedestrians, or transit? Frame from an advocacy perspective. Don't start with "This document".\n\n${documentText}`,
+  });
+  return text;
 }
 
 export async function generateTitle(documentText: string): Promise<string> {
-  const title = await callOpenRouter([
-    {
-      role: "user",
-      content: `Generate a short, descriptive title for this document (max 10 words). The title should be clear and professional, like a document heading. Do not use quotes or punctuation at the end. Just output the title, nothing else.\n\nDocument content:\n${documentText}`,
-    },
-  ]);
-  return title.trim();
+  const { text } = await generateText({
+    model: openrouter.chatModel(OPENROUTER_MODEL),
+    prompt: `Short title (max 10 words). If relevant, frame around bike/pedestrian/transit impact. No quotes or punctuation. Just the title.\n\n${documentText}`,
+  });
+  return text.trim();
 }
