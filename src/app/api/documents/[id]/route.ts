@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { del } from "@vercel/blob";
+import { Prisma } from "@prisma/client";
 
 // GET single document
 export async function GET(
@@ -50,10 +51,20 @@ export async function PUT(
       thumbnailUrl,
     } = body;
 
-    console.log("[PUT /api/documents] Updating document:", id);
-    console.log("[PUT /api/documents] Title:", title);
-    console.log("[PUT /api/documents] New file:", fileName || "(none)");
-    console.log("[PUT /api/documents] Thumbnail URL:", thumbnailUrl || "(none)");
+    // Log full request body for debugging (excluding large fields)
+    console.log("[PUT /api/documents] Request received:", {
+      documentId: id,
+      title,
+      description: description ? `${description.slice(0, 100)}...` : "(none)",
+      category: category || "(none)",
+      context: context ? `${context.slice(0, 100)}...` : "(none)",
+      published,
+      fileName: fileName || "(none)",
+      filePath: filePath || "(none)",
+      thumbnailUrl: thumbnailUrl || "(none)",
+      hasExtractedText: !!extractedText,
+      extractedTextLength: extractedText?.length || 0,
+    });
 
     const existingDoc = await prisma.document.findUnique({
       where: { id },
@@ -120,20 +131,71 @@ export async function PUT(
       updateData.thumbnailUrl = thumbnailUrl;
     }
 
+    // Log the update data being sent to Prisma
+    console.log("[PUT /api/documents] Update data:", {
+      ...updateData,
+      context: updateData.context ? `${String(updateData.context).slice(0, 100)}...` : null,
+      extractedText: updateData.extractedText ? `[${String(updateData.extractedText).length} chars]` : undefined,
+    });
+
     const document = await prisma.document.update({
       where: { id },
       data: updateData,
     });
 
-    console.log("[PUT /api/documents] Document updated successfully");
+    console.log("[PUT /api/documents] Document updated successfully, id:", document.id);
 
     // Exclude extractedText from response
     const { extractedText: _, ...documentWithoutText } = document;
     return NextResponse.json(documentWithoutText);
   } catch (error) {
-    console.error("[PUT /api/documents] Error:", error);
+    // Enhanced error logging for production debugging
+    console.error("[PUT /api/documents] Error updating document:", id);
+    console.error("[PUT /api/documents] Error type:", error?.constructor?.name);
+    console.error("[PUT /api/documents] Error message:", error instanceof Error ? error.message : String(error));
+    
+    // Detailed Prisma error handling
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error("[PUT /api/documents] Prisma error code:", error.code);
+      console.error("[PUT /api/documents] Prisma error meta:", JSON.stringify(error.meta));
+      
+      // Return specific error messages for known Prisma errors
+      if (error.code === "P2002") {
+        return NextResponse.json(
+          { error: "A document with this data already exists", code: error.code },
+          { status: 400 }
+        );
+      }
+      if (error.code === "P2025") {
+        return NextResponse.json(
+          { error: "Document not found or was deleted", code: error.code },
+          { status: 404 }
+        );
+      }
+      
+      return NextResponse.json(
+        { error: `Database error: ${error.code}`, code: error.code, details: error.meta },
+        { status: 500 }
+      );
+    }
+    
+    if (error instanceof Prisma.PrismaClientValidationError) {
+      console.error("[PUT /api/documents] Prisma validation error:", error.message);
+      return NextResponse.json(
+        { error: "Invalid data format", details: error.message.slice(0, 500) },
+        { status: 400 }
+      );
+    }
+    
+    // Log full error stack for unknown errors
+    if (error instanceof Error) {
+      console.error("[PUT /api/documents] Error stack:", error.stack);
+    }
+    
+    // Return generic error with some details for debugging
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to update document" },
+      { error: "Failed to update document", details: errorMessage },
       { status: 500 }
     );
   }

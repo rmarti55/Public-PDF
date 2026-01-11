@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useChat, UIMessage } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { DefaultChatTransport, isToolUIPart, getToolName } from "ai";
 import MessageContent from "./MessageContent";
 import { LLM_CONFIG } from "@/lib/config";
 
@@ -105,6 +105,10 @@ function ChatPanelContent({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState(true);
   const [inputValue, setInputValue] = useState("");
+  
+  // Track response duration per message
+  const [messageDurations, setMessageDurations] = useState<Record<string, number>>({});
+  const responseStartTimeRef = useRef<number | null>(null);
 
   // useChat now initializes with the already-loaded messages
   const { messages, sendMessage, status, error, stop } = useChat({
@@ -151,6 +155,25 @@ function ChatPanelContent({
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // Track response duration
+  useEffect(() => {
+    if (status === "submitted") {
+      // Start timing when request is submitted
+      responseStartTimeRef.current = Date.now();
+    } else if (status === "ready" && responseStartTimeRef.current !== null) {
+      // Calculate duration when response completes
+      const duration = (Date.now() - responseStartTimeRef.current) / 1000;
+      const lastAssistantMessage = messages.filter(m => m.role === "assistant").pop();
+      if (lastAssistantMessage) {
+        setMessageDurations(prev => ({
+          ...prev,
+          [lastAssistantMessage.id]: duration,
+        }));
+      }
+      responseStartTimeRef.current = null;
+    }
+  }, [status, messages]);
+
   const handleSubmit = (e?: React.FormEvent, directMessage?: string) => {
     e?.preventDefault();
     const messageToSend = directMessage || inputValue.trim();
@@ -177,10 +200,10 @@ function ChatPanelContent({
     
     // Check for tool invocations in the message parts
     for (const part of lastMessage.parts) {
-      if (part.type === "tool-invocation" && part.toolInvocation.toolName === "goToPage") {
-        const args = part.toolInvocation.args as { pageNumber: number; reason: string };
-        if (args?.pageNumber) {
-          onGoToPage(args.pageNumber);
+      if (isToolUIPart(part) && getToolName(part) === "goToPage") {
+        const input = part.input as { pageNumber: number; reason: string } | undefined;
+        if (input?.pageNumber) {
+          onGoToPage(input.pageNumber);
         }
       }
     }
@@ -292,23 +315,22 @@ function ChatPanelContent({
                       <MessageContent content={getMessageText(message)} onGoToPage={onGoToPage} />
                       {/* Render tool invocations */}
                       {message.parts
-                        .filter((part): part is { type: "tool-invocation"; toolInvocation: { toolName: string; args: Record<string, unknown> } } => 
-                          part.type === "tool-invocation"
-                        )
+                        .filter(isToolUIPart)
                         .map((part, idx) => {
-                          if (part.toolInvocation.toolName === "goToPage") {
-                            const args = part.toolInvocation.args as { pageNumber: number; reason: string };
+                          if (getToolName(part) === "goToPage") {
+                            const input = part.input as { pageNumber: number; reason: string } | undefined;
+                            if (!input?.pageNumber) return null;
                             return (
                               <button
                                 key={idx}
-                                onClick={() => onGoToPage?.(args.pageNumber)}
+                                onClick={() => onGoToPage?.(input.pageNumber)}
                                 className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors cursor-pointer"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                 </svg>
-                                Go to page {args.pageNumber}
-                                {args.reason && <span className="text-blue-500">— {args.reason}</span>}
+                                Go to page {input.pageNumber}
+                                {input.reason && <span className="text-blue-500">— {input.reason}</span>}
                               </button>
                             );
                           }
@@ -317,10 +339,13 @@ function ChatPanelContent({
                     </>
                   )}
                 </div>
-                {/* Model attribution for assistant messages */}
+                {/* Model attribution and duration for assistant messages */}
                 {message.role === "assistant" && (
                   <p className="text-[10px] text-gray-400 px-2">
                     {LLM_CONFIG.displayName}
+                    {messageDurations[message.id] && (
+                      <span> · {messageDurations[message.id].toFixed(1)}s</span>
+                    )}
                   </p>
                 )}
               </div>

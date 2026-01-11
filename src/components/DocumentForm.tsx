@@ -342,55 +342,132 @@ export default function DocumentForm({
       setUploadStatus(mode === "create" ? "Saving document..." : "Saving changes...");
 
       if (mode === "create") {
+        const requestPayload = {
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          context: formData.context,
+          published: formData.published,
+          fileName,
+          filePath,
+          extractedText,
+          thumbnailUrl,
+        };
+
+        // Log request payload for debugging
+        console.log("[DocumentForm] Sending POST request:", {
+          url: "/api/documents",
+          payload: {
+            ...requestPayload,
+            context: requestPayload.context ? `${requestPayload.context.slice(0, 100)}...` : "(none)",
+            extractedText: requestPayload.extractedText ? `[${requestPayload.extractedText.length} chars]` : undefined,
+          },
+        });
+
         const res = await fetch("/api/documents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: formData.title,
-            description: formData.description,
-            category: formData.category,
-            context: formData.context,
-            published: formData.published,
+          body: JSON.stringify(requestPayload),
+        });
+
+        if (!res.ok) {
+          // Log full response details for debugging
+          const responseText = await res.text();
+          console.error("[DocumentForm] Create failed:", {
+            status: res.status,
+            statusText: res.statusText,
+            response: responseText,
+          });
+          
+          // Try to parse error response
+          let errorMessage = "Failed to save document";
+          try {
+            const errorData = JSON.parse(responseText);
+            errorMessage = errorData.error || errorMessage;
+            if (errorData.details) {
+              errorMessage += `: ${errorData.details}`;
+            }
+          } catch {
+            // Response wasn't JSON
+            if (responseText) {
+              errorMessage += `: ${responseText.slice(0, 200)}`;
+            }
+          }
+          
+          throw new Error(errorMessage);
+        }
+      } else {
+        // Edit mode
+        const requestPayload = {
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          context: formData.context,
+          published: formData.published,
+          ...(file && {
             fileName,
             filePath,
             extractedText,
             thumbnailUrl,
           }),
+        };
+
+        // Log request payload for debugging
+        console.log("[DocumentForm] Sending PUT request:", {
+          url: `/api/documents/${documentId}`,
+          payload: {
+            ...requestPayload,
+            context: requestPayload.context ? `${requestPayload.context.slice(0, 100)}...` : "(none)",
+            extractedText: requestPayload.extractedText ? `[${requestPayload.extractedText.length} chars]` : undefined,
+          },
         });
 
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || "Failed to save document");
-        }
-      } else {
-        // Edit mode
         const res = await fetch(`/api/documents/${documentId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: formData.title,
-            description: formData.description,
-            category: formData.category,
-            context: formData.context,
-            published: formData.published,
-            ...(file && {
-              fileName,
-              filePath,
-              extractedText,
-              thumbnailUrl,
-            }),
-          }),
+          body: JSON.stringify(requestPayload),
         });
 
         if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || "Failed to update document");
+          // Log full response details for debugging
+          const responseText = await res.text();
+          console.error("[DocumentForm] Save failed:", {
+            status: res.status,
+            statusText: res.statusText,
+            response: responseText,
+          });
+          
+          // Try to parse error response
+          let errorMessage = "Failed to update document";
+          let errorDetails = "";
+          try {
+            const errorData = JSON.parse(responseText);
+            errorMessage = errorData.error || errorMessage;
+            if (errorData.details) {
+              errorDetails = typeof errorData.details === "string" 
+                ? errorData.details 
+                : JSON.stringify(errorData.details);
+            }
+            if (errorData.code) {
+              errorDetails = `[${errorData.code}] ${errorDetails}`;
+            }
+          } catch {
+            // Response wasn't JSON
+            errorDetails = responseText.slice(0, 200);
+          }
+          
+          throw new Error(errorDetails ? `${errorMessage}: ${errorDetails}` : errorMessage);
         }
       }
 
       onSuccess();
     } catch (err) {
-      console.error("[DocumentForm] Error:", err);
+      console.error("[DocumentForm] Error saving document:", {
+        mode,
+        documentId,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       setError(err instanceof Error ? err.message : "Failed to save document");
     } finally {
       setSaving(false);

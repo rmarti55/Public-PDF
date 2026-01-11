@@ -147,12 +147,16 @@
 - **Dependencies**: CHAT-001
 - **Status**: ✅ Working
 
-### CHAT-010: Model Attribution
-- **Description**: Show which AI model generated each response
-- **User Value**: Transparency about AI model being used
+### CHAT-010: Model Attribution & Response Duration
+- **Description**: Show which AI model generated each response and how long it took
+- **User Value**: Transparency about AI model being used and response time
 - **Files**: 
   - `src/lib/config.ts` (LLM_CONFIG with model display name)
-  - `src/components/ChatPanel.tsx` (lines 320-324) - displays below assistant messages
+  - `src/components/ChatPanel.tsx`:
+    - Lines 108-109: State for tracking durations (`messageDurations`, `responseStartTimeRef`)
+    - Lines 165-179: Effect to calculate duration when response completes
+    - Lines 336-343: Display model name and duration below assistant messages
+- **Display Format**: "Claude Sonnet 4.5 · 2.3s"
 - **Status**: ✅ Working
 
 ---
@@ -356,6 +360,7 @@ AdminUser {
 |------|--------|-------------------|
 | 2026-01-10 | Initial feature registry created | All |
 | 2026-01-10 | Implemented model attribution on chat messages | CHAT-010 |
+| 2026-01-10 | Added response duration display next to model name | CHAT-010 |
 
 ---
 
