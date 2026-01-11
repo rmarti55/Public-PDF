@@ -23,6 +23,19 @@ model Document {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   messages      ChatMessage[]
+  pageChunks    PageChunk[]
+}
+
+model PageChunk {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  pageNumber  Int
+  content     String   @db.Text
+  embedding   Json     // Vector embedding stored as JSON array
+  createdAt   DateTime @default(now())
+
+  @@index([documentId])
 }
 
 model ChatMessage {

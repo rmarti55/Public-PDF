@@ -27,6 +27,15 @@ interface DocumentFormProps {
   onCancel: () => void;
 }
 
+// Type for AI analysis results
+interface AnalysisResult {
+  title: string;
+  description: string;
+  suggestedCategory: string;
+  keyPoints: string[];
+  bikeImpact: string;
+}
+
 export default function DocumentForm({
   mode,
   documentId,
@@ -39,6 +48,8 @@ export default function DocumentForm({
   const [uploadStatus, setUploadStatus] = useState("");
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const [generatingTitle, setGeneratingTitle] = useState(false);
+  const [analyzingDocument, setAnalyzingDocument] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState<DocumentFormData>({
     title: "",
@@ -197,6 +208,76 @@ export default function DocumentForm({
       setError(err instanceof Error ? err.message : "Failed to generate description");
     } finally {
       setGeneratingDescription(false);
+    }
+  };
+
+  // Analyze document with AI - generates all metadata in one call
+  const handleAnalyzeDocument = async () => {
+    setAnalyzingDocument(true);
+    setError("");
+    setAnalysisResult(null);
+
+    try {
+      let textToAnalyze: string;
+
+      if (mode === "edit" && documentId) {
+        // Edit mode: fetch extracted text from the document
+        const docRes = await fetch(`/api/documents/${documentId}`, {
+          headers: { "x-admin-auth": "true" },
+        });
+        if (!docRes.ok) {
+          throw new Error("Failed to fetch document");
+        }
+        // For edit mode, we need to get the extracted text from a different endpoint
+        // or use the generate-title endpoint's approach
+        const res = await fetch(`/api/documents/${documentId}/generate-title`, {
+          method: "POST",
+        });
+        if (!res.ok) {
+          throw new Error("Could not analyze document - no text available");
+        }
+        // Fall back to individual generation in edit mode for now
+        throw new Error("Use individual generate buttons in edit mode");
+      } else {
+        // Create mode: extract text from uploaded file
+        if (!file) {
+          setError("Please select a PDF file first");
+          return;
+        }
+        const extractedText = await extractTextFromPDFClient(file);
+        if (!extractedText || extractedText.trim().length === 0) {
+          throw new Error("Could not extract text from PDF");
+        }
+        textToAnalyze = extractedText.slice(0, 15000);
+      }
+
+      const res = await fetch("/api/analyze-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: textToAnalyze }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to analyze document");
+      }
+
+      const result: AnalysisResult = await res.json();
+      setAnalysisResult(result);
+
+      // Auto-fill the form with results
+      setFormData((prev) => ({
+        ...prev,
+        title: result.title,
+        description: result.description,
+        category: result.suggestedCategory,
+        // Add key points to context if context is empty
+        context: prev.context || `<h4>Key Points</h4>\n<ul>\n${result.keyPoints.map(p => `  <li>${p}</li>`).join('\n')}\n</ul>\n\n<p><em>Impact assessment: ${result.bikeImpact}</em></p>`,
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to analyze document");
+    } finally {
+      setAnalyzingDocument(false);
     }
   };
 
@@ -365,6 +446,53 @@ export default function DocumentForm({
           </p>
         )}
       </div>
+
+      {/* AI Analyze All Button - only in create mode with file */}
+      {isCreate && file && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-medium text-gray-900">AI Document Analysis</h4>
+              <p className="text-sm text-gray-600">
+                Automatically generate title, description, category, and key points
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAnalyzeDocument}
+              disabled={analyzingDocument || !file}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+            >
+              {analyzingDocument ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  Analyze Document
+                </>
+              )}
+            </button>
+          </div>
+          {analysisResult && (
+            <div className="mt-3 pt-3 border-t border-purple-200">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-medium text-gray-700">Impact:</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  analysisResult.bikeImpact === "positive" ? "bg-green-100 text-green-700" :
+                  analysisResult.bikeImpact === "negative" ? "bg-red-100 text-red-700" :
+                  analysisResult.bikeImpact === "mixed" ? "bg-yellow-100 text-yellow-700" :
+                  "bg-gray-100 text-gray-700"
+                }`}>
+                  {analysisResult.bikeImpact}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Title */}
       <div className="mb-6">
